@@ -17,4 +17,8 @@ Observed main SHA at bootstrap: 736633504d6d68543bd6c69d59bba6adf8098cd5
 ## Failure policy
 If HIVE is OFFLINE/DEGRADED/BLOCKED, execution falls back to canonical repository sources. Never invent missing context or promote a checkpoint from stale HIVE state.
 
-Live registration is intentionally NOT claimed by this bootstrap because it requires the user's local HIVE runtime and filesystem.
+Live registration was claimed and verified during FGE-002: Forge is registered in the local HIVE
+Project Registry as `FORGE` and inspects as `READY` on merged `main`, with the exact HEAD SHA, the
+clean-working-tree flag and the inspection timestamp recorded in
+`.engineering/evidence/FGE-002-GOVERNANCE.md`. HIVE remains an optional context plane; Forge stays
+operable from Git alone.
