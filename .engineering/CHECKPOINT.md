@@ -1,22 +1,26 @@
 # Checkpoint
 
-**State:** M00_WORK_ORDER_ADMISSION  
+**State:** M00_EXECUTION_READY  
 **Active increment:** FGE-004  
-**Product implementation:** NOT AUTHORIZED  
-**Risk:** STANDARD
+**Product implementation:** AUTHORIZED  
+**Risk:** HIGH
 
 ## Established
 - FGE-001/FGE-002 foundation, GEF/HIVE integration and GitHub governance remain established.
-- FGE-003 passed exact-head Repository validation run #39 on `9c289b5979b4d6e153904007930c3fee8c528ac6`.
-- FGE-003 PR #3 was squash-merged through the governed path as `e888adefe716aced102136886e385a857a3ae1c1`.
-- Post-merge promotion PR #4 passed Repository validation #42 at `089a8b6fe057c177e0795837a1fba1de21259536` and was squash-merged to `main` as `f216084944ff105f0fd18b3c200493bc01345714`.
-- Master Module Index M00-M25 is promoted.
-- M00 deep planning S01-S22 and consolidated architecture are promoted.
-- Sovereign Standalone Mode, one-primary-prompt-per-module, and proof-driven verification are canonical.
-- Product implementation remains blocked.
+- FGE-003 product/module architecture and M00 S01-S22 planning are promoted.
+- FGE-004 M00 Work Order admission PR #5 passed Repository validation #44 at `d2ac129750432a6ee60ee67b6124f25d86f1b42d`.
+- PR #5 was squash-merged to `main` as `e729006cf3b54b813373cdcb460690215e997a02`.
+- Work Order `FGE-004-M00` is admitted as the complete M00 implementation authority.
+- One primary executor prompt must cover Waves A-F; later executor prompts are correction deltas only.
+- No-placeholder completeness, Sovereign Standalone Mode and proof-driven certification are mandatory.
 
-## Active gate
-FGE-004 admits the complete M00 implementation Work Order from the promoted M00 consolidated architecture. The Work Order must cover the entire M00 module and compile one primary executor prompt with internal build waves. Subsequent executor prompts are correction deltas only.
+## Authorized execution
+Product implementation is authorized ONLY for the scope of admitted Work Order `FGE-004-M00` / M00. This authorization does not extend to M01-M25.
+
+Before code, executor must perform Context Lock/preflight against protected `main`, record exact base SHA and verify canonical source fingerprints.
+
+## Review law
+After executor delivery, reviewer first attempts safe repository self-healing. Codex/executor receives a correction PDF only when local/heavy/admin execution is genuinely required. No known HIGH/CRITICAL defect may be promoted.
 
 ## Stop condition
-Do not implement M00 product code until the FGE-004 M00 implementation Work Order is admitted and its execution gate is explicitly opened.
+Implement and open/update the M00 PR with complete Waves A-F evidence, then STOP for independent review. Do not merge M00, promote its completion checkpoint, or start M01 during executor execution.
