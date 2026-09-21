@@ -23,8 +23,14 @@ Primary interface model: hybrid.
 ## Module map
 
 ### M00 — Forge Kernel & Contract Runtime
-Sections: capability registry; module lifecycle; dependency graph; contract registry; configuration; feature/capability negotiation; event bus; command bus; error taxonomy; idempotency; concurrency; plugin/adapter SDK; compatibility gates; health/readiness; deterministic execution envelope.
-Own tech: Forge Contract Fabric (FCF), Capability DNA, Deterministic Execution Envelope.
+Deep planning: 22/22 sections complete under FGE-003; consolidated architecture recorded in `.engineering/modules/M00-CONSOLIDATED-ARCHITECTURE.md`.
+
+Sections:
+S01 Kernel Runtime; S02 Module Lifecycle; S03 Forge Contract Fabric; S04 Capability Registry; S05 Capability Resolver & Forge Decision Plane; S06 Dependency & Causality Graph; S07 Configuration System; S08 State Store & Recovery; S09 Event Bus; S10 Command Bus; S11 Error Taxonomy; S12 Idempotency & Cancellation; S13 Concurrency & Backpressure; S14 Cache & Fingerprints; S15 Plugin & Adapter SDK; S16 Compatibility Engine; S17 Health & Readiness; S18 Telemetry & Hot Path Registry; S19 Deterministic Execution Envelope; S20 Resource Governor; S21 Zero-Dependency Boot Path; S22 Test-Proof Foundation.
+
+Canonical technology families: Forge Contract Fabric/Contract IR; Capability DNA; Forge Decision Plane; Forge Causality Graph; Forge State Fabric; Forge Error Genome; Forge Semantic Fingerprint Fabric; Forge Compatibility Engine; Forge Telemetry Spine/Hot Path Registry; Deterministic Execution Envelope; Forge Resource Governor; Sovereign Boot Capsule/ZDRP; Forge Proof Graph/Proof Obligation Compiler.
+
+Construction remains blocked until FGE-003 review/promotion and admission of the complete M00 implementation Work Order.
 
 ### M01 — Project Intake, Discovery & Specification Compiler
 Sections: project intake; interviewer/discovery; requirements; scope classifier; constraint extraction; ambiguity detector; acceptance-criteria compiler; architecture brief; risk classifier; dependency discovery; change-request intake; specification versioning.
