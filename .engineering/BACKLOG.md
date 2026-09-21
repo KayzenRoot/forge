@@ -16,3 +16,20 @@ Deep planning of M(n+1) waits for completion of M(n), except narrow interface st
 One complete Forge product. No MVP track. Internal increments/checkpoints exist for engineering safety, evidence and rollback.
 
 See MASTER-MODULE-INDEX.md for M00-M25 and CONSTRUCTION-MODEL.md for the canonical execution loop.
+
+## FGE-004 — M00 Work Order Admission
+
+**Status:** ACTIVE / PLANNING GATE
+
+Admit the complete implementation Work Order for M00 — Forge Kernel & Contract Runtime from the promoted S01-S22 consolidated architecture.
+
+Required outcomes:
+- bind the promoted M00 consolidated architecture and canonical source hierarchy;
+- freeze implementation scope, out-of-scope, contracts, constraints and build waves;
+- map all M00 Definition of Done and proof obligations into acceptance criteria;
+- require Sovereign Standalone Mode and ZDRP certification;
+- require exact-head evidence and governed review;
+- compile one primary executor prompt for the entire M00 module after admission;
+- keep product implementation unauthorized until this Work Order is admitted.
+
+STOP CONDITION: M00 implementation Work Order admitted and execution gate explicitly opened.
