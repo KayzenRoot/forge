@@ -140,3 +140,34 @@ A module is COMPLETE only when its scope, contracts, implementation, tests, secu
 
 ## Ordering principle
 M00-M12 establish the universal factory. M13-M18 add production-domain factories. M19-M24 harden and compound the factory. M25 certifies the ecosystem as a whole. Dependencies may be specified early, but implementation proceeds module-by-module unless an ADR proves a narrow prerequisite slice is unavoidable.
+
+### M26 — Predictive Defect Intelligence & Bug Hunter
+Mission: make defect prevention and deep bug discovery a first-class Forge capability across every software domain. M26 complements M06 verification and M07 repair/review by continuously reasoning about where defects are likely to exist or emerge before production, then compiling those suspicions into deterministic evidence-seeking probes.
+
+Sections: defect intelligence model; predictive defect surfaces; invariant mining; semantic contradiction detection; temporal/concurrency bug hunting; state-machine exploration; data-boundary/pathological-input analysis; differential execution; metamorphic testing; mutation-guided blind-spot discovery; fuzz/property campaign intelligence; symbolic/concolic adapter layer; static/dynamic evidence fusion; change-risk forecasting; bug lineage and recurrence prevention; fault-injection synthesis; environment/configuration drift bugs; distributed/async failure hunting; performance/resource correctness bugs; security-reliability crossover defects; production-near shadow validation; automated minimization/reproduction; root-cause graph; repair candidate synthesis; repair verification; defect confidence/calibration; cross-project defect learning; pre-production certification.
+
+Own technology families:
+- Forge Defect Radar (FDR): continuously scores defect-prone change surfaces using semantic change, dependency/causality, history, complexity, ownership and proof gaps.
+- Counterfactual Bug Simulator (CBS): asks what sequences, failures, timing and state combinations would violate declared invariants before those failures are observed.
+- Invariant Mining Engine (IME): derives candidate invariants from contracts, types, tests, traces and state transitions, then requires deterministic validation before promotion.
+- Temporal Race Explorer (TRE): explores scheduling/cancellation/deadline/retry/interleaving spaces to expose race, deadlock, livelock and stale-state defects.
+- Semantic Contradiction Engine (SCE): finds disagreements among requirements, contracts, code, schemas, migrations, tests and runtime behavior.
+- Defect Causality Graph (DCG): links symptom → state → change → dependency → proof gap → root cause → repair → regression guard.
+- Bug Genome & Recurrence Shield (BGRS): fingerprints defect mechanisms, not just error strings, and searches new changes/projects for structurally similar recurrence.
+- Proof-Gap Attack Engine (PGAE): actively attacks assumptions behind green evidence and cached proofs to find untested behaviors.
+- Adversarial State-Space Synthesizer (ASSS): generates high-value pathological states/inputs/sequences under bounded budgets.
+- Differential Reality Engine (DRE): compares implementations, versions, configurations, platforms and model/provider paths to reveal silent semantic drift.
+- Predictive Failure Twin (PFT): builds a bounded executable failure model of a change and simulates likely fault propagation before merge.
+- Repair Confidence Compiler (RCC): requires a proposed fix to remove the causal mechanism, preserve contracts and add a recurrence guard before it can be called repaired.
+- Defect Escape Budget (DEB): measurable release risk budget driven by unresolved uncertainty, proof gaps, changed critical surfaces and historical escape calibration.
+
+Boundary law:
+- M06 owns verification/test execution intelligence and proof-producing test infrastructure.
+- M07 owns review verdicts, self-healable repository repairs and correction-loop governance.
+- M11 owns production observability/feedback.
+- M26 owns defect prediction, proactive bug hunting, causal defect intelligence, adversarial search strategy and recurrence prevention.
+- M26 consumes M00 Proof/Causality/Contract primitives and M05 code intelligence, requests/targets M06 verification, supplies defect findings/repair hypotheses to M07, and learns from M11 evidence.
+- M26 must never mark a probabilistic prediction as a confirmed bug without deterministic/reproducible evidence or an explicit UNCONFIRMED risk classification.
+
+Certification intent: M26 is not a promise of zero bugs. Its measurable goal is to reduce defect escape rate, mean time to reproducible root cause, recurrence rate and unnecessary verification cost while increasing pre-production discovery of high-severity defects.
+
