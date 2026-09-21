@@ -1,0 +1,42 @@
+name: Repository validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate canonical foundation
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            README.md AGENTS.md
+            .engineering/SOURCE-HIERARCHY.md
+            .engineering/PROJECT-OVERVIEW.md
+            .engineering/REQUIREMENTS.md
+            .engineering/SCOPE.md
+            .engineering/ARCHITECTURE.md
+            .engineering/SECURITY.md
+            .engineering/TEST-BENCHMARK-PLAN.md
+            .engineering/DEPLOYMENT.md
+            .engineering/BACKLOG.md
+            .engineering/DEFINITION-OF-DONE.md
+            .engineering/DECISIONS.md
+            .engineering/CHECKPOINT.md
+            .engineering/CHECKPOINT.json
+            .engineering/gef/GEF-ADOPTION.md
+            .engineering/hive/HIVE-INTEGRATION.md
+          )
+          for f in "${required[@]}"; do test -s "$f" || { echo "Missing/empty: $f"; exit 1; }; done
+          python -m json.tool .engineering/CHECKPOINT.json >/dev/null
+          grep -q "FGE_BOOTSTRAP_IN_PROGRESS" .engineering/CHECKPOINT.md
+          grep -q '"productImplementationAuthorized":false' .engineering/CHECKPOINT.json
