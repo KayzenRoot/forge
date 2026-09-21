@@ -1,29 +1,27 @@
 # Checkpoint
 
-**State:** FOUNDATION_READY  
-**Active increment:** FGE-003  
-**Product implementation:** NOT AUTHORIZED  
+**State:** FGE_003_REVIEW  \
+**Active increment:** FGE-003  \
+**Product implementation:** NOT AUTHORIZED  \
 **Risk:** STANDARD
 
 ## Established
-- Project identity: Hive Forge.
-- GEF governance baseline selected and locally validated: v1.0.0, commit `866fe3af8cccc65c929aaf6a47a924401fa448b3`, `npm ci` + `npm run validate` + `npm run audit:workspace` green.
-- Canonical Source Pack seeded and protected by the `Repository validation` workflow.
-- PDF prompt policy adopted and bound by `AGENTS.md` (`.engineering/CODEX-PROMPT-POLICY.md`).
-- GitHub `main` governance active: ruleset `23765135` requires pull requests, the `governance`
-  status check in strict mode, conversation resolution, stale-review dismissal, and blocks deletion
-  and non-fast-forward, with no bypass actor.
-- FGE-001 and FGE-002 merged into `main` through the protected path (squash, exact-head check bound);
-  no protection was bypassed.
-- Live HIVE registration validated: project `FORGE` reports `READY` with a clean working tree on
-  merged `main`.
+- Foundation/GEF/HIVE/GitHub governance from FGE-001/FGE-002 remains established.
+- FGE-003 Work Order is admitted and its planning scope has been executed.
+- Master Module Index defines M00-M25 and the module-by-module construction law.
+- Sovereign Standalone Mode, one-primary-prompt-per-module, and proof-carrying green-test reuse are recorded.
+- M00 deep planning S01-S22 is complete.
+- M00 consolidated architecture, authority map, invariants, build waves, proof obligations and module DoD are recorded.
+- Product code has not started.
 
-## Not yet proven
-- FGE-003 deep product discovery and architecture decomposition (no Work Order admitted yet).
-- HIVE semantic indexing/retrieval quality against Forge source, which has no product source yet.
-- Runtime architecture, construction engine and product modules.
-- Any deployment, observability or external integration.
+## Current review gate
+- Final FGE-003 audit must bind the exact current PR head.
+- Required repository validation/checks must be green on that exact head.
+- Any review defects are self-healed in-repo when feasible.
+- FGE-003 promotion/checkpoint occurs only after governed merge.
+
+## Next admitted activity after FGE-003 promotion
+Create/admit the complete M00 implementation Work Order and compile one primary executor prompt covering all M00 build waves. Additional M00 executor prompts are correction deltas only.
 
 ## Stop condition
-Product implementation stays gated until the FGE-003 Work Order is admitted and approved.
-Foundation completion alone does not authorize product code.
+Do not implement M00 product code until FGE-003 is approved/promoted and the M00 implementation Work Order is admitted.
