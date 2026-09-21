@@ -1,16 +1,18 @@
 # Backlog
 
 ## NECESSARY
-- FGE-001 Bootstrap GEF + HIVE foundation. COMPLETE (merged in `main`).
-- FGE-002 Validate GitHub governance and repository checks. COMPLETE (PR #1, merged in `main`).
-- FGE-003 Deep product discovery and architecture decomposition. NEXT — active increment, not yet
-  admitted through a Work Order.
-- FGE-004 Define Core/Hades and IRIS integration contracts before implementation that depends on them.
+- FGE-001 Bootstrap GEF + HIVE foundation. COMPLETE.
+- FGE-002 GitHub governance and operational validation. COMPLETE.
+- FGE-003 Master product decomposition and construction model. IN REVIEW.
+- M00 Forge Kernel & Contract Runtime. NEXT after FGE-003 promotion.
+- M01-M25 follow the canonical order in MASTER-MODULE-INDEX.md, subject only to governed dependency ADRs.
 
-## IMPORTANT
-- Construction engine and adapters.
-- Test/security/build orchestration.
-- Deployment and observability plane.
-- Web3 and game-specific toolchains.
+## MODULE EXECUTION LAW
+Every module follows PLAN COMPLETE MODULE → FREEZE CONTRACTS → BUILD COMPLETE MODULE → TEST/EVIDENCE → REVIEW/SELF-HEAL → PROMOTE → NEXT MODULE.
 
-Items after FGE-002 require planning before execution.
+Deep planning of M(n+1) waits for completion of M(n), except narrow interface stubs explicitly required to freeze M(n) contracts.
+
+## PRODUCT SCOPE
+One complete Forge product. No MVP track. Internal increments/checkpoints exist for engineering safety, evidence and rollback.
+
+See MASTER-MODULE-INDEX.md for M00-M25 and CONSTRUCTION-MODEL.md for the canonical execution loop.
