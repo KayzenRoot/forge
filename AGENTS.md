@@ -14,6 +14,9 @@ Inspect the repository before mutation. Execute only the admitted Work Order. Pr
 ## Review self-healing
 During review classify defects as SELF_HEALABLE or EXECUTOR_REQUIRED. Small, localized, low-risk defects that can be objectively corrected with available repository tools should be fixed by the reviewer in the same logical increment when safe. Executor-required defects receive only a Correction Delta. Never bypass protected main, tests, evidence, architecture, scope, STOP CONDITION or HIGH/CRITICAL gates.
 
+## External executor prompts
+Read and obey `.engineering/CODEX-PROMPT-POLICY.md`. Whenever a review leaves EXECUTOR_REQUIRED work, local-machine work or unavailable GitHub administration, provide the execution prompt automatically as a downloadable PDF. The user must not need to request the PDF again.
+
 ## HIVE
 HIVE supplies context/memory/retrieval; it does not replace Git authority. HIVE integration must fail safely when unavailable and must not make core repository correctness dependent on an external memory service.
 
