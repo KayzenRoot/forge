@@ -33,3 +33,11 @@ Required outcomes:
 - keep product implementation unauthorized until this Work Order is admitted.
 
 STOP CONDITION: M00 implementation Work Order admitted and execution gate explicitly opened.
+
+## FUTURE MODULE REGISTRATION — M26
+- M26 Predictive Defect Intelligence & Bug Hunter is registered as NECESSARY future product scope.
+- Purpose: proactive defect prediction, deep bug hunting, causal root-cause intelligence and recurrence prevention across Forge-built systems.
+- It complements rather than replaces M06 Test Intelligence, M07 Quality/Self-Healing and M11 Runtime Observability.
+- Current status: concept baseline only. Deep planning and implementation remain blocked by the vertical module law.
+- The active M00 Work Order and current Codex execution MUST NOT be changed or invalidated by this registration.
+
