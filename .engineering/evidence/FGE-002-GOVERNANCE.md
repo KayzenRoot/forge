@@ -120,12 +120,17 @@ HIVE 1.0.0 verified installed and running: `hive-api` healthy on `127.0.0.1:8000
 - Relative path: `forge`
 - State: `READY`, `inspection_error: null`
 - Git branch: `fge-002-governance-validation`
-- Git HEAD: `fc0e8947514394d7fabc74442737c332302ef33d`
+- Git HEAD at capture: `fc0e8947514394d7fabc74442737c332302ef33d`
 - `detached_head: false`, `repository_accessible: true`, `working_tree_clean: true`
 - Detected language stack: `[]` (the repository carries no top-level manifest or language signal
   at the bootstrap stage; this is reported as observed, not inferred)
 - Last inspection timestamp: recorded by re-inspection after the line-ending correction, at the
   exact head above.
+
+The registry tracks the checked-out branch, so its head advances with the commits below. The
+capture head is recorded instead of the final head because any further edit to this file moves the
+head again; re-inspecting the merged `main` state is a mandatory step of the promotion increment
+that follows this PR, and `READY` here is claimed only for the state actually observed.
 
 ### Host projects-root drift (defect corrected)
 
@@ -178,6 +183,22 @@ startup fails loudly. Because the server cold-starts through `docker compose exe
 timeout of five seconds is too short; that is why the opencode entry sets an explicit timeout, and it
 is the value to raise if another client reports MCP startup failures.
 
+## PR #1 and exact-head validation
+
+- PR: https://github.com/KayzenRoot/forge/pull/1 — state OPEN, base `main` at
+  `e8e99c234669e3fab9956a97bb42f3fbd2b8e6f5`.
+- Final head: `f7329bb11437a585514a03d32ad997c747a1b299`.
+- Published by fast-forwarding the existing branch only (`564a3fd..f7329bb`); no force push, no
+  history rewrite, and the pre-existing `fge-002-prompt-policy` branch was left in place rather
+  than deleted.
+- `Repository validation` run `35596989160`, event `pull_request`, head SHA exactly
+  `f7329bb11437a585514a03d32ad997c747a1b299`: **success**. The required `governance` check reports
+  `pass` on this exact head.
+- Delta scope confirmed: 6 files, +331 / -0, all of them governance, policy, work-order or
+  documentation files. No Forge product implementation is present in this increment.
+- `mergeStateStatus` is `BLOCKED` by design: the ruleset installed in this increment requires one
+  approving review, which the executor must not self-award. `mergeable` is `MERGEABLE`.
+
 ## Defects found and corrected
 
 1. Projects-root drift between `.env`/user environment and the live container, which would have
@@ -197,7 +218,7 @@ is the value to raise if another client reports MCP startup failures.
 | C active `main` ruleset meeting the target policy | PASS |
 | D GEF v1.0.0 pinned commit plus validation and audit | PASS |
 | E Forge registered and `READY` in local HIVE at the relevant Git state | PASS |
-| F PR #1 carries the final delta and required check passes on the exact head | pending push/CI below |
+| F PR #1 carries the final delta and required check passes on the exact head | PASS |
 | G Evidence bundle truthful and complete | PASS |
 | H no HIGH/CRITICAL known defect remains | PASS |
 
