@@ -3,8 +3,8 @@
 ## NECESSARY
 - FGE-001 Bootstrap GEF + HIVE foundation. COMPLETE.
 - FGE-002 GitHub governance and operational validation. COMPLETE.
-- FGE-003 Master product decomposition and construction model. IN REVIEW.
-- M00 Forge Kernel & Contract Runtime. NEXT after FGE-003 promotion.
+- FGE-003 Master product decomposition and construction model. COMPLETE / PROMOTED.
+- M00 Forge Kernel & Contract Runtime. WORK ORDER ADMISSION ACTIVE under FGE-004.
 - M01-M25 follow the canonical order in MASTER-MODULE-INDEX.md, subject only to governed dependency ADRs.
 
 ## MODULE EXECUTION LAW
