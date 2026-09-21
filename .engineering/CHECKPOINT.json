@@ -1,0 +1,1 @@
+{"schemaVersion":1,"project":"Hive Forge","state":"FGE_BOOTSTRAP_IN_PROGRESS","activeIncrement":"FGE-001","risk":"STANDARD","productImplementationAuthorized":false,"gef":{"version":"v1.0.0","source":"KayzenRoot/gef-bootstrap"},"hive":{"source":"KayzenRoot/hive","integrationState":"DOCUMENTED_NOT_LIVE_VALIDATED"},"stopCondition":"FGE_FOUNDATION_AUDITED_AND_PROMOTED"}
