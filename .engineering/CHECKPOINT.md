@@ -1,8 +1,8 @@
 # Checkpoint
 
-**State:** FGE_003_REVIEW  \
-**Active increment:** FGE-003  \
-**Product implementation:** NOT AUTHORIZED  \
+**State:** FGE_003_REVIEW  
+**Active increment:** FGE-003  
+**Product implementation:** NOT AUTHORIZED  
 **Risk:** STANDARD
 
 ## Established
