@@ -31,12 +31,107 @@ jobs:
             .engineering/BACKLOG.md
             .engineering/DEFINITION-OF-DONE.md
             .engineering/DECISIONS.md
+            .engineering/CODEX-PROMPT-POLICY.md
             .engineering/CHECKPOINT.md
             .engineering/CHECKPOINT.json
             .engineering/gef/GEF-ADOPTION.md
             .engineering/hive/HIVE-INTEGRATION.md
           )
           for f in "${required[@]}"; do test -s "$f" || { echo "Missing/empty: $f"; exit 1; }; done
-          python -m json.tool .engineering/CHECKPOINT.json >/dev/null
-          grep -q "FGE_BOOTSTRAP_IN_PROGRESS" .engineering/CHECKPOINT.md
-          grep -q '"productImplementationAuthorized":false' .engineering/CHECKPOINT.json
+          python - <<'PY'
+          import json, pathlib, re, sys
+
+          ROOT = pathlib.Path(".")
+          ENGINEERING = ROOT / ".engineering"
+
+          def read(rel):
+              return (ROOT / rel).read_text(encoding="utf-8")
+
+          TOKEN = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]*)*$")
+          RISKS = {"LOW", "STANDARD", "HIGH", "CRITICAL"}
+          errors = []
+
+          def check(cond, msg):
+              if not cond:
+                  errors.append(msg)
+
+          raw = json.loads(read(".engineering/CHECKPOINT.json"))
+          check(isinstance(raw, dict), "CHECKPOINT.json must be a JSON object")
+          if errors:
+              print("\n".join(errors)); sys.exit(1)
+
+          ck = raw
+          md = read(".engineering/CHECKPOINT.md")
+          state = ck.get("state")
+          increment = ck.get("activeIncrement")
+          authorized = ck.get("productImplementationAuthorized")
+
+          def md_field(label):
+              m = re.search(r"^\*\*" + re.escape(label) + r":\*\*\s*(.+?)\s*$", md, re.MULTILINE)
+              return m.group(1).strip() if m else None
+
+          # Schema: shape and vocabulary only. No checkpoint state is hard-coded,
+          # so promotion to a new lifecycle stage never requires editing this gate.
+          check(set(ck) == {"schemaVersion", "project", "state", "activeIncrement", "risk",
+                            "productImplementationAuthorized", "gef", "hive", "stopCondition"},
+                f"CHECKPOINT.json keys mismatch: {sorted(ck)}")
+          check(ck.get("schemaVersion") == 1, "schemaVersion must be exactly 1")
+          check(isinstance(state, str) and TOKEN.match(state or ""), "state must be UPPER_SNAKE token")
+          check(isinstance(increment, str) and re.fullmatch(r"FGE-\d{3}", increment or ""),
+                "activeIncrement must match FGE-NNN")
+          check(ck.get("risk") in RISKS, "risk must be one of LOW/STANDARD/HIGH/CRITICAL")
+          check(isinstance(authorized, bool), "productImplementationAuthorized must be a JSON boolean")
+          check(isinstance(ck.get("stopCondition"), str) and TOKEN.match(ck.get("stopCondition") or ""),
+                "stopCondition must be a non-empty UPPER_SNAKE token")
+          check(isinstance(ck.get("project"), str) and ck["project"].strip(), "project must be non-empty")
+
+          gef = ck.get("gef") or {}
+          hive = ck.get("hive") or {}
+          check(isinstance(gef, dict) and re.fullmatch(r"v\d+\.\d+\.\d+", str(gef.get("version") or "")),
+                "gef.version must be semver tag vMAJOR.MINOR.PATCH")
+          check(isinstance(gef.get("source"), str) and gef["source"].strip(), "gef.source must be non-empty")
+          check(isinstance(hive.get("source"), str) and hive["source"].strip(), "hive.source must be non-empty")
+          check(isinstance(hive.get("integrationState"), str)
+                and TOKEN.match(hive.get("integrationState") or ""),
+                "hive.integrationState must be UPPER_SNAKE token")
+
+          # Cross-file consistency: the markdown checkpoint must not drift from the JSON one.
+          check(md_field("State") == state, "CHECKPOINT.md State disagrees with CHECKPOINT.json state")
+          check(md_field("Active increment") == increment,
+                "CHECKPOINT.md Active increment disagrees with CHECKPOINT.json activeIncrement")
+          check(md_field("Risk") == ck.get("risk"), "CHECKPOINT.md Risk disagrees with CHECKPOINT.json risk")
+          check(md_field("Product implementation") == ("AUTHORIZED" if authorized else "NOT AUTHORIZED"),
+                "CHECKPOINT.md Product implementation disagrees with productImplementationAuthorized")
+          check("## Established" in md and "## Stop condition" in md,
+                "CHECKPOINT.md must keep the Established and Stop condition sections")
+
+          # Truthfulness: a live HIVE claim may not coexist with the bootstrap disclaimer.
+          live_hive = not str(hive.get("integrationState", "")).startswith("DOCUMENTED_NOT_LIVE")
+          disclaimed = "intentionally NOT claimed" in read(".engineering/hive/HIVE-INTEGRATION.md")
+          check(not (live_hive and disclaimed),
+                "hive.integrationState claims live validation while HIVE-INTEGRATION.md disclaims it")
+
+          # Admission: implementation may only be authorized against an admitted Work Order.
+          if authorized:
+              wo = ENGINEERING / "work-orders" / f"{increment}.md"
+              check(wo.is_file() and wo.stat().st_size > 0,
+                    f"productImplementationAuthorized=true requires non-empty {wo.as_posix()}")
+
+          # Backlog and identity bindings.
+          check(increment in read(".engineering/BACKLOG.md"),
+                "activeIncrement must be listed in BACKLOG.md")
+          check(str(gef.get("version")) in read(".engineering/gef/GEF-ADOPTION.md"),
+                "gef.version must be documented in GEF-ADOPTION.md")
+          check(str(ck.get("project")) in read(".engineering/PROJECT-OVERVIEW.md"),
+                "checkpoint project must match PROJECT-OVERVIEW.md")
+          check("CODEX-PROMPT-POLICY.md" in read("AGENTS.md"),
+                "AGENTS.md must bind CODEX-PROMPT-POLICY.md")
+
+          if errors:
+              print("Checkpoint validation FAILED:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+          print(f"Checkpoint validation OK: state={state} increment={increment} "
+                f"implementation_authorized={str(authorized).lower()}")
+          PY
