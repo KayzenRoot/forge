@@ -1,23 +1,23 @@
 # FGE-004-M00 Certification Evidence Capsule — candidate
 
-Status: NOT CERTIFIED — exact-head hosted checks and independent assurance remain open.
+Status: NOT CERTIFIED — implementation-candidate hosted checks passed; independent assurance remains open. This capsule does not certify its own documentation revision.
 
 ## Identity and execution
 
 - Work Order: `FGE-004-M00`, M00 S01-S22, HIGH risk.
 - Admitted base: `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
 - Implementation branch: `fge-004-m00-implementation`; original implementation starting head: `90efa8846b0aaa6615114b4ad363c84b7da46a20`.
-- CD3 correction parent: `58a0616da55d574e7e556056f0e47cc46571d7c7`, the PR #9 head when this delta was admitted. The previous exact-head Actions run `35878684088` passed all four configured jobs on that parent only; new-head CI must be recorded separately after the authorized push.
-- Pre-CD3 UADS plan/run: `wo_b161d2f667649b5c` / `er_586620b1f8dd4753`, final phase `review` / status `in_progress`, linked to Codex thread `01a0cafa-b9b8-77b2-b017-f3187d711916`. The final CD3 digest requires fresh verification/evidence preparation.
+- CD3 implementation candidate: `4d6109024d652fd0ac7454e14eeb5aaa9f5113ac`. Exact-head GitHub Actions run `35890844050` passed all four configured jobs on this SHA, including outbound-network-blocked doctor checks on Ubuntu and Windows. This proves technical CI for this candidate only; a later evidence-only commit must use its own PR #9 exact-head check binding.
+- Pre-CD3 UADS plan/run: `wo_b161d2f667649b5c` / `er_586620b1f8dd4753`, linked to Codex thread `01a0cafa-b9b8-77b2-b017-f3187d711916`. Its recorded digest `1e7bb0a5d6c779590680c790cf8801c59c5827e7f1af1cf224bd5f9ad6f77889` predates CD3 and is not certification evidence for CD3 or CD4. After the CD3 commit, `uads verify --json` returned `no implementation change to verify` on the clean worktree and the run was marked `blocked`; fresh digest-bound CD3/CD4 execution evidence is not established.
 - Installed UADS package: v0.12.1. The prepared Codex bundle uses schema v0.11.0 and adapter contract v0.10.0. `implement` exposes 11 non-review assignments through sequential role-cycling; the current `review` bundle exposes zero assignments and fails closed with `INDEPENDENT_REVIEW_BACKEND_REQUIRED`. Hidden background/subagent/parallel capability remains `unknown`; four distinct assurance reviewers remain required, so visible chat activity cannot count as independent review.
 - The two historical failures remain in UADS history: `fail_0a0885d3ae84936c` and `fail_d24e593c9f468786`. The new plan/run preserves their provenance.
-- The pushed candidate SHA will be recorded in PR #9 after its evidence commit. This capsule and the Evidence Bundle do not certify their own containing commit.
+- PR #9 records the implementation-candidate SHA and exact-head check; the current PR check rollup is authoritative for any later evidence-only revision. This capsule and the Evidence Bundle do not certify their own containing commit.
 
 ## S01-S22 candidate coverage
 
 | Section | Candidate authority | Current local evidence | Status / remaining proof |
 |---|---|---|---|
-| S01 Kernel Runtime | `forge-kernel::boot`, `runtime` | native boot, runtime bounds, cancellation and Windows CLI smoke | Candidate; exact-head hosted Linux/Windows jobs remain |
+| S01 Kernel Runtime | `forge-kernel::boot`, `runtime` | native boot, runtime bounds, cancellation and Windows CLI smoke | Candidate; Linux/Windows hosted jobs passed in run `35890844050`; full rollback rehearsal remains |
 | S02 Module Lifecycle | `lifecycle` | transition and readiness tests | Candidate; full rollback rehearsal remains |
 | S03 Contract Fabric | `forge-contracts::contract` | positive/negative schema tests and CLI validator | Candidate; broader corpus remains |
 | S04 Capability Registry | `capabilities` | immutable snapshots, evidence monotonicity, quarantine tests | Candidate; provenance audit remains |
@@ -37,8 +37,8 @@ Status: NOT CERTIFIED — exact-head hosted checks and independent assurance rem
 | S18 Telemetry / HPR | `telemetry` | bounded cardinality and local snapshot survives optional exporter failure | Candidate; remote exporter and overhead distribution remain |
 | S19 Deterministic Envelope | `determinism` | fingerprint/replay boundary tests | Candidate; full clock/RNG/filesystem replay normalization remains |
 | S20 Resource Governor | `resources`, `boot`, `forge-state` | live token/cost attribution, cumulative parent limits, restart recovery, exact replay deduplication and atomic durable pool ceiling; CD3 serializes cloned-lease mutation across the durable/live transition and fails closed on ambiguity | Candidate; provider billing integration is unavailable and defaults remain fail-closed at zero budgets |
-| S21 Zero-Dependency Boot | `boot`, `forge-cli doctor` | Windows CLI reports native_ready, schema v2, HIVE not_configured, embeddings disabled | Candidate; local firewall rule creation was denied, so exact-head hosted egress-block checks are required |
-| S22 Test-Proof Foundation | `proof` | exact-head proof graph, obligation compiler, high-risk expansion and gap detection tests | Candidate; final CEC execution, hosted evidence and independent review remain |
+| S21 Zero-Dependency Boot | `boot`, `forge-cli doctor` | Windows CLI reports native_ready, schema v2, HIVE not_configured, embeddings disabled | Candidate; local firewall rule creation was denied; exact-candidate hosted egress-block checks passed on Ubuntu and Windows in run `35890844050` |
+| S22 Test-Proof Foundation | `proof` | exact-head proof graph, obligation compiler, high-risk expansion and gap detection tests | Candidate; implementation-candidate hosted CI passed in run `35890844050`; independent review and other M00 proof gaps remain |
 
 ## Invariant evidence map
 
@@ -46,7 +46,7 @@ Legend: `LOCAL` means named executable local evidence exists; `PARTIAL` means ev
 
 | Invariant | Status | Evidence / gap |
 |---|---|---|
-| I01 Native boot has no network/model dependency | PARTIAL | native boot and CLI report HIVE unconfigured and embeddings disabled; local firewall control denied, hosted blocked-network gates pending |
+| I01 Native boot has no network/model dependency | PARTIAL | native boot and CLI report HIVE unconfigured and embeddings disabled; local firewall control was denied, while hosted blocked-network checks passed on Ubuntu and Windows in run `35890844050` |
 | I02 Cache deletion cannot break correctness | LOCAL | canonical state is separate from disposable cache |
 | I03 Optional integration failure cannot globally fail Forge | PARTIAL | optional HIVE health degradation and no-HIVE boot are covered; configured adapter outage integration remains |
 | I04 Hard contract/security/integrity constraints are not traded | LOCAL | schema, privacy, state integrity and resolver negative tests |
@@ -67,13 +67,13 @@ Legend: `LOCAL` means named executable local evidence exists; `PARTIAL` means ev
 | I19 Survival Reserve cannot be borrowed by ordinary work | LOCAL | separate pools and boundary tests |
 | I20 LLM output is not sole hard-invariant authority | LOCAL | deterministic code/tests decide local gates; native runtime calls no model |
 | I21 External trace/context IDs do not authorize | LOCAL | trusted host permission context supplies authorization |
-| I22 Exact-head certification precedes completion | PARTIAL | compiler binds exact head; final hosted checks, UADS gates and independent review remain |
+| I22 Exact-head certification precedes completion | PARTIAL | compiler binds exact head; implementation-candidate hosted CI passed in run `35890844050`; fresh digest-bound UADS evidence and independent review remain |
 
 ## Mandatory remaining gates
 
-1. The UADS run must carry final-digest PASS evidence for all nine executable gates; `security-review` and `performance-check` require their mapped reviewers. The assurance packet also requires four distinct reviewer sessions. Hidden execution capabilities remain `unknown` unless a runtime probe proves otherwise.
-2. Before approval, PR #9 must show green governance, Linux, Windows, blocked-network and security/supply-chain checks for its exact head. Historical run `35878684088` is parent-head evidence only and cannot qualify a later SHA.
-3. Stop at `REVIEW_BACKEND_REQUIRED` unless UADS can prove execution by distinct independent security, performance, reliability and certification reviewers. Visible chat role-cycling is not independent review.
+1. The pre-CD3 UADS digest and its nine executable PASS records do not certify CD3/CD4. Fresh digest-bound evidence for the current candidate is not established; `security-review` and `performance-check` remain pending, and the assurance packet requires four distinct reviewer sessions. Hidden execution capabilities remain `unknown` unless a runtime probe proves otherwise.
+2. Implementation-candidate run `35890844050` passed governance, Linux, Windows, security/supply-chain and both hosted blocked-network doctor checks on SHA `4d6109024d652fd0ac7454e14eeb5aaa9f5113ac`. Any later evidence-only commit must use its own exact-head check binding through PR #9; the candidate run does not certify that later SHA. Historical run `35878684088` applies only to its parent SHA.
+3. Stop as `BLOCKED — INDEPENDENT_REVIEW_BACKEND_REQUIRED` unless UADS can prove execution by distinct independent security, performance, reliability and certification reviewers. Visible chat role-cycling is not independent review.
 4. Keep the PR unmerged, the canonical checkpoint unchanged and M01 out of scope. Do not promote or certify M00 from this executor run.
 
 ## Verdict

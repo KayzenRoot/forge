@@ -1,16 +1,16 @@
 # FGE-004-M00 Evidence Bundle — implementation candidate
 
-Status: CANDIDATE EVIDENCE; NOT AN APPROVAL OR CHECKPOINT PROMOTION
+Status: CANDIDATE EVIDENCE; NOT AN APPROVAL OR CHECKPOINT PROMOTION. This bundle does not certify its own documentation revision.
 
 ## Identity and authority
 
 - Work Order: `FGE-004-M00` (M00 S01-S22, HIGH risk).
 - Admitted base: `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
-- Branch: `fge-004-m00-implementation`; original implementation starting head: `90efa8846b0aaa6615114b4ad363c84b7da46a20`; CD3 parent head: `58a0616da55d574e7e556056f0e47cc46571d7c7`.
-- PR: #9 in `KayzenRoot/forge`; it remains draft and unmerged. Actions run `35878684088` passed all four configured jobs on the CD3 parent head only. The final pushed candidate SHA and exact-head CI results must be recorded in the PR description after push.
-- UADS: installed v0.12.1; HIGH plan `wo_b161d2f667649b5c`; run `er_586620b1f8dd4753`, final phase `review` / status `in_progress`, current Codex thread `01a0cafa-b9b8-77b2-b017-f3187d711916`. Use the execution sidecar's current digest-bound gate and reviewer records for the live status; the four distinct assurance sessions remain unproven.
+- Branch: `fge-004-m00-implementation`; original implementation starting head: `90efa8846b0aaa6615114b4ad363c84b7da46a20`; CD3 implementation candidate: `4d6109024d652fd0ac7454e14eeb5aaa9f5113ac`.
+- PR: #9 in `KayzenRoot/forge`; it remains draft and unmerged. Actions run `35890844050` passed all four configured jobs on the exact CD3 candidate SHA; Ubuntu and Windows both passed the hosted outbound-network-blocked doctor check. This run does not certify a later evidence-only commit; PR #9 is the authoritative location for the current exact-head check binding.
+- UADS: installed v0.12.1; HIGH plan `wo_b161d2f667649b5c`; pre-CD3 run `er_586620b1f8dd4753`, linked to Codex thread `01a0cafa-b9b8-77b2-b017-f3187d711916`. Its recorded digest `1e7bb0a5d6c779590680c790cf8801c59c5827e7f1af1cf224bd5f9ad6f77889` predates CD3 and is not certification evidence for CD3/CD4. After the CD3 commit, `uads verify --json` returned `no implementation change to verify` on the clean worktree and marked the run `blocked`; fresh digest-bound CD3/CD4 execution evidence is not established. Four distinct assurance sessions remain unproven.
 - Prepared Codex contract: schema v0.11.0, adapter contract v0.10.0. The `implement` phase exposes 11 non-review assignments through sequential `role-cycling`; the current `review` bundle has zero active assignments and blocks with `INDEPENDENT_REVIEW_BACKEND_REQUIRED`. Hidden execution/subagent/parallel capability remains `unknown`.
-- UADS binds all nine executable gate PASS records to the final candidate digest; `security-review` and `performance-check` remain PENDING, with four distinct assurance reviewer sessions missing. Historical failures `fail_0a0885d3ae84936c` and `fail_d24e593c9f468786` remain preserved. Do not treat visible role-cycling as independent review.
+- The nine executable UADS PASS records belong to a pre-CD3 digest and do not certify CD3/CD4. `security-review` and `performance-check` remain pending, with four distinct assurance reviewer sessions missing. Historical failures `fail_0a0885d3ae84936c` and `fail_d24e593c9f468786` remain preserved. Do not treat visible role-cycling as independent review.
 - HIVE remains optional. Native Forge boot reports HIVE not configured and semantic embeddings disabled; no external model or embedding API is called.
 
 ## Candidate structure and changes
@@ -42,8 +42,8 @@ Canonical source SHA-256 values are listed in [SOURCE-FINGERPRINTS.sha256](SOURC
 | `cargo-audit audit --deny warnings` (0.22.2) | PASS: 1,267 advisories loaded; 189 locked dependencies scanned |
 | Release CLI `doctor` with a fresh temporary state root | PASS locally: `native_ready`, integrity `ok`, schema 2, HIVE `not_configured`, embeddings `disabled`; resource ledger fingerprint returned |
 | Local outbound-firewall doctor gate | BLOCKED: `New-NetFirewallRule` returned `Access denied`; the doctor report without a rule is not network-isolation evidence |
-| UADS digest verification/evidence preparation | Current-digest results and reviewer state are maintained in the UADS execution sidecar. `security-review` and `performance-check` require independent reviewers; the assurance packet requires four distinct sessions and none is recorded |
-| GitHub Actions exact-head evidence | Historical parent run `35878684088` passed on `58a0616da55d574e7e556056f0e47cc46571d7c7`. For review, use the exact candidate SHA and current green check rollup recorded in PR #9; never transfer the historical parent result to a later head |
+| UADS digest verification/evidence preparation | The pre-CD3 run's recorded digest predates CD3; after the CD3 commit, `uads verify --json` returned `no implementation change to verify` on the clean worktree and marked the run `blocked`. No fresh digest-bound CD3/CD4 execution evidence is established. `security-review` and `performance-check` require independent reviewers; four distinct sessions are not recorded |
+| GitHub Actions exact-head evidence | Implementation candidate `4d6109024d652fd0ac7454e14eeb5aaa9f5113ac` passed all four configured jobs in run `35890844050`, including Ubuntu and Windows outbound-network-blocked doctor checks. The historical parent run `35878684088` applies only to its parent. A later evidence-only commit must use its own exact-head check binding in PR #9; never transfer the candidate result to a later SHA |
 
 Durable-accounting tests prove migration from schema v1 to v2, exact replay deduplication, restart recovery, concurrent usage writes, the shared SQLite pool ceiling across two boots, and rollback of an uncommitted write after child-process termination. CD3 adds deterministic proof that cloned-lease delegation is blocked during accounting, and that cancellation, revocation, persistence failure or conflicting replay fail closed and reconcile from the durable ledger on restart. Cache hit counts do not prove tokens or money saved; those values are `not_measured`.
 
@@ -52,7 +52,7 @@ Durable-accounting tests prove migration from schema v1 to v2, exact replay dedu
 - Owning package: source at `D:\Projetos Codex\uads`, exposed to the installed CLI by the `C:\Users\csn19\AppData\Roaming\npm\node_modules\uads` junction. Source starting head: `ad2e6c8ec8d416bf4c7d4b80d41fb24c63835699`; no UADS commit or push is authorized.
 - Bundle/schema is v0.11.0 while the adapter contract remains v0.10.0. Run phase and status derive the active assignment list; implement phase excludes reviewers; hidden execution capability must be runtime-proven before reviewer assignments or assurance handoff can be accepted.
 - Re-preparation previously compared the live refreshed repository index with the frozen specialist-selection digest, so an in-scope implementation edit was misclassified as stale planning. The adapter now keeps the live index in the bundle while validating selection against its frozen Work Order/Context Plan bindings; evaluation AD41 proves re-preparation after an edit, empty assignments in `verify`, and fail-closed `review` when hidden execution is unknown.
-- Local UADS gates passed: typecheck, build, 50 files / 415 tests, adapter evaluation (41/41), focused adapter tests (15/15), host execution tests (53/53), and installed Codex bundle preparation. On the fresh Forge run, UADS binds command/file evidence to the candidate digest; nine executable gates are PASS and the two reviewer gates remain PENDING. The review packet identifies the required distinct reviewers, and hidden execution capability remains `unknown`.
+- Local UADS gates passed: typecheck, build, 50 files / 415 tests, adapter evaluation (41/41), focused adapter tests (15/15), host execution tests (53/53), and installed Codex bundle preparation. The pre-CD3 Forge run's digest predates the CD3 candidate; after the CD3 commit, `uads verify --json` returned `no implementation change to verify` on the clean worktree and marked the run `blocked`. Its nine executable PASS records do not certify CD3/CD4, and the two reviewer gates remain pending. The review packet identifies the required distinct reviewers, and hidden execution capability remains `unknown`.
 - Pre-edit source/global-skill/dist backup and rollback material: `C:\Users\csn19\.uads\backups\FGE-004-M00-CD2-UADS-Delegation-Recovery-20260923T085322`. The two historical Failure Records remain unchanged.
 
 ## Security, cost and assurance limits
@@ -60,6 +60,6 @@ Durable-accounting tests prove migration from schema v1 to v2, exact replay dedu
 - `unsafe_code` is forbidden. Tests cover contract rejection, privacy, path shapes, backup tampering, health freshness, outbox identity, command idempotency, extension scopes, queue/resource bounds, and the new durable usage invariants.
 - Resource budgets default to zero until a caller supplies explicit limits. Parent/child lease limits and cumulative durable pool ceilings are enforced; provider billing is not integrated.
 - The dependency gates passed locally with the duplicate-version warnings above. This is not an independent security audit.
-- Linux and exact-head Windows blocked-egress proof remain pending hosted CI. Local firewall configuration was denied.
+- Linux and Windows blocked-egress doctor checks passed for implementation candidate `4d6109024d652fd0ac7454e14eeb5aaa9f5113ac` in hosted run `35890844050`; local firewall configuration was denied. Any later evidence-only commit has a separate exact-head check binding through PR #9.
 - Independent security, performance, reliability and certification decisions require a proven separate reviewer execution backend. The UADS capability snapshot is `unknown`; do not self-approve.
 - M00 remains unapproved. Keep the PR unmerged, canonical checkpoint unchanged, and M01 out of scope.

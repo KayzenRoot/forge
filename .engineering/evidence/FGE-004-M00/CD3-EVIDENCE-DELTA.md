@@ -8,7 +8,7 @@ Status: LOCAL CORRECTION QUALIFIED; NOT CERTIFIED OR APPROVED
 - Branch: `fge-004-m00-implementation`.
 - Admitted parent / PR #9 head: `58a0616da55d574e7e556056f0e47cc46571d7c7`.
 - Base: `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
-- PR #9 must remain draft and unmerged. The parent Actions run `35878684088` is historical evidence for the parent only; use PR #9's exact-head check rollup for the final candidate.
+- Implementation candidate: `4d6109024d652fd0ac7454e14eeb5aaa9f5113ac`. PR #9 must remain draft and unmerged. Parent Actions run `35878684088` is evidence for the parent only; exact-head run `35890844050` passed all four configured jobs on the implementation candidate, including Ubuntu and Windows outbound-network-blocked doctor checks. Any later evidence-only commit must use its own PR #9 exact-head check binding and does not inherit this result.
 
 ## Correction
 
@@ -37,6 +37,6 @@ Updated S08, S12 and S20 module contracts, runtime/recovery documentation, perfo
 
 ## Assurance boundary and disposition
 
-UADS execution run `er_586620b1f8dd4753` is the authoritative record for the current digest, selected-gate evidence and reviewer assignments. Final exact-head GitHub checks are recorded in PR #9. Independent security/performance review and four distinct assurance sessions are required; no visible executor result substitutes for those reviewer verdicts. If UADS cannot prove distinct reviewer sessions, stop as `BLOCKED — INDEPENDENT_REVIEW_BACKEND_REQUIRED`.
+UADS plan/run `wo_b161d2f667649b5c` / `er_586620b1f8dd4753` records a pre-CD3 digest, `1e7bb0a5d6c779590680c790cf8801c59c5827e7f1af1cf224bd5f9ad6f77889`; it does not certify CD3 or CD4. After the CD3 commit, `uads verify --json` returned `no implementation change to verify` on the clean worktree and the run was marked `blocked`, so fresh digest-bound CD3/CD4 execution evidence is not established. PR #9 records the exact-head candidate CI and is the authoritative location for the check binding of any later evidence-only commit. Independent security/performance review and four distinct assurance sessions are required; no visible executor result substitutes for those reviewer verdicts. If UADS cannot prove distinct reviewer sessions, stop as `BLOCKED — INDEPENDENT_REVIEW_BACKEND_REQUIRED`.
 
 No merge, checkpoint promotion, M01 work, or UADS repository commit/push is authorized by this delta.
