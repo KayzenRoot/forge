@@ -1,6 +1,6 @@
 # M00-S14 — Cache, Fingerprints & Proof Reuse
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S13
 

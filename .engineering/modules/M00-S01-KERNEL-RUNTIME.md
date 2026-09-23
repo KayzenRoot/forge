@@ -1,6 +1,6 @@
 # M00-S01 — Kernel Runtime
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 
 ## Mission

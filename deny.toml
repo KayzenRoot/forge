@@ -1,0 +1,38 @@
+[advisories]
+version = 2
+unmaintained = "workspace"
+yanked = "deny"
+
+[licenses]
+version = 2
+allow = [
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "CC0-1.0",
+    "MIT",
+    "MIT-0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+[[bans.deny]]
+name = "reqwest"
+reason = "M00 core and NATIVE_READY must not require outbound HTTP clients."
+
+[[bans.deny]]
+name = "hyper"
+reason = "M00 core and NATIVE_READY must not acquire a hidden network stack."
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

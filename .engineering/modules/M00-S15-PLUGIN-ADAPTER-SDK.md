@@ -1,6 +1,6 @@
 # M00-S15 — Plugin & Adapter SDK
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S14
 

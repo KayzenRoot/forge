@@ -1,6 +1,6 @@
 # M00-S04 — Capability Registry
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01 Kernel Runtime; S02 Module Lifecycle; S03 Forge Contract Fabric
 

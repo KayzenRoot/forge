@@ -1,9 +1,11 @@
 # M00 — Consolidated Architecture & Module Certification Plan
 
-Status: CONSOLIDATED PLANNING / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Planning sections: S01-S22
 Parent increment: FGE-003
+
+Candidate code is mapped to the Rust workspace modules. This status records that an implementation candidate exists; it does not mean the S01-S22 acceptance criteria, platform certification, assurance or checkpoint promotion have passed.
 
 ## 1. Mission
 M00 establishes the sovereign kernel and contract runtime that every later Forge module depends on. It must be local-first, deterministic where declared, bounded under load, evidence-producing, contract-driven, recoverable and operational without HIVE, Core/Hades, IRIS, Internet, cloud or an LLM.

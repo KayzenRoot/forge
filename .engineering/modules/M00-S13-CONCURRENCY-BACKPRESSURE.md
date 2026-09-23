@@ -1,6 +1,6 @@
 # M00-S13 — Concurrency, Scheduling & Backpressure
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S12
 

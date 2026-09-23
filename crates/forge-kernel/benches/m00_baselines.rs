@@ -1,0 +1,555 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::hint::black_box;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use forge_contracts::{
+    ContractDefinition, ContractId, ContractVersion, Fingerprint, FingerprintKind,
+    ValidatedContract,
+};
+use forge_kernel::cache::{CacheIdentity, get as cache_get, put as cache_put};
+use forge_kernel::capabilities::{
+    CapabilityDescriptor, CapabilityRegistry, EvidenceLevel, HealthState, Locality, PrivacyClass,
+    SideEffectClass,
+};
+use forge_kernel::causality::{
+    CausalityGraph, ChangeKind, EdgeConfidence, EdgeKind, GraphEdge, GraphNode, NodeKind,
+};
+use forge_kernel::commands::{
+    AuthorizationContext, CommandBus, CommandContext, CommandRegistration, CommandRequest,
+    HandlerOutput, IdempotencyMode, SensitivityClass,
+};
+use forge_kernel::events::{EventBus, EventClass, EventEnvelope, EventLane};
+use forge_kernel::health::{HealthRegistry, ProbeObservation, ProbePolicy};
+use forge_kernel::proof::{
+    ChangeAssessment, ProofGraph, ProofKind, ProofNode, ProofObligation, ProofObligationCompiler,
+    ProofOutcome, ProofRisk,
+};
+use forge_kernel::resolver::{ResolutionRequest, resolve};
+use forge_kernel::resources::{ResourceGovernor, ResourceVector};
+use forge_kernel::runtime::{CancellationToken, Deadline, KernelRuntime, RuntimeConfig};
+use forge_kernel::telemetry::HotPathRegistry;
+use forge_state::ForgeStateStore;
+use serde_json::{Value, json};
+use tokio::runtime::Builder;
+
+fn main() {
+    println!(
+        "profile os={} arch={} workload=m00-microbench release=true toolchain=see-rustc-vv",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+    measure("blake3_1k", 100_000, || {
+        black_box(blake3::hash(black_box(&[7_u8; 1024])));
+    });
+    measure("typed_content_fingerprint_1k", 100_000, || {
+        black_box(Fingerprint::from_bytes(
+            FingerprintKind::Content,
+            black_box(&[7_u8; 1024]),
+        ));
+    });
+
+    let schema = json!({
+        "type": "object",
+        "properties": {"value": {"type": "integer"}},
+        "required": ["value"],
+        "additionalProperties": false
+    });
+    let contract_definition = ContractDefinition {
+        id: ContractId::new("bench.payload").expect("contract id"),
+        version: ContractVersion::new(1, 0, 0),
+        owner: "bench".into(),
+        schema: schema.clone(),
+    };
+    let contract = ValidatedContract::compile(contract_definition.clone()).expect("contract");
+    let instance = json!({"value": 42});
+    measure("contract_validate", 20_000, || {
+        contract
+            .validate(black_box(&instance))
+            .expect("valid instance");
+    });
+    measure("contract_compile", 2_000, || {
+        black_box(ValidatedContract::compile(contract_definition.clone()).expect("compile"));
+    });
+
+    let registry = CapabilityRegistry::new();
+    registry
+        .register(CapabilityDescriptor {
+            id: "bench.local".into(),
+            capability_id: "bench.route".into(),
+            version: "1.0.0".into(),
+            contract_id: "bench.payload".into(),
+            evidence: EvidenceLevel::ConformancePassed,
+            health: HealthState::Ready,
+            health_observed_at_ms: 100,
+            health_max_age_ms: 10_000,
+            privacy: PrivacyClass::Internal,
+            side_effect: SideEffectClass::Pure,
+            deterministic: true,
+            quality_basis_points: 9_000,
+            latency_ms: 10,
+            token_cost: 0,
+            monetary_cost_micros: 0,
+            locality: Locality::Native,
+        })
+        .expect("capability registration");
+    let snapshot = registry.snapshot().expect("snapshot");
+    let request = ResolutionRequest {
+        capability_id: "bench.route".into(),
+        max_privacy: PrivacyClass::Internal,
+        max_side_effect: SideEffectClass::Pure,
+        max_latency_ms: 1_000,
+        max_tokens: 1_000,
+        max_cost_micros: 1_000,
+        require_determinism: true,
+        allow_remote: false,
+        now_ms: 101,
+        minimum_evidence: EvidenceLevel::ConformancePassed,
+    };
+    measure("capability_resolution_one_candidate", 100_000, || {
+        black_box(resolve(&snapshot, &request));
+    });
+    measure("capability_registration", 2_000, || {
+        let registry = CapabilityRegistry::new();
+        registry
+            .register(CapabilityDescriptor {
+                id: "bench.local".into(),
+                capability_id: "bench.route".into(),
+                version: "1.0.0".into(),
+                contract_id: "bench.payload".into(),
+                evidence: EvidenceLevel::ConformancePassed,
+                health: HealthState::Ready,
+                health_observed_at_ms: 100,
+                health_max_age_ms: 10_000,
+                privacy: PrivacyClass::Internal,
+                side_effect: SideEffectClass::Pure,
+                deterministic: true,
+                quality_basis_points: 9_000,
+                latency_ms: 10,
+                token_cost: 0,
+                monetary_cost_micros: 0,
+                locality: Locality::Native,
+            })
+            .expect("register capability");
+        black_box(registry.snapshot().expect("snapshot"));
+    });
+
+    let mut graph = CausalityGraph::new();
+    for index in 0..100 {
+        graph
+            .add_node(GraphNode {
+                id: format!("module.{index}"),
+                kind: if index == 99 {
+                    NodeKind::Test
+                } else {
+                    NodeKind::Module
+                },
+            })
+            .expect("graph node");
+    }
+    for index in 0..99 {
+        graph
+            .add_edge(GraphEdge {
+                from: format!("module.{index}"),
+                to: format!("module.{}", index + 1),
+                kind: EdgeKind::Requires,
+                propagation: [ChangeKind::Implementation].into_iter().collect(),
+                confidence: EdgeConfidence::Proven,
+            })
+            .expect("graph edge");
+    }
+    let graph_snapshot = graph.snapshot().expect("graph snapshot");
+    measure("change_cone_100_node_chain", 20_000, || {
+        black_box(
+            graph_snapshot.compute_change_cone(&["module.0".into()], ChangeKind::Implementation),
+        );
+    });
+
+    let governor = ResourceGovernor::new(ResourceVector {
+        cpu_millis: 100,
+        memory_bytes: 1_048_576,
+        disk_bytes: 1_048_576,
+        network_bytes: 0,
+        tokens: 10_000,
+        cost_micros: 10_000,
+    });
+    measure("resource_lease_and_delegation", 50_000, || {
+        let lease = governor
+            .try_lease(
+                "bench",
+                ResourceVector {
+                    tokens: 100,
+                    cost_micros: 100,
+                    ..ResourceVector::default()
+                },
+            )
+            .expect("root lease");
+        let child = lease
+            .delegate(
+                "bench.child",
+                ResourceVector {
+                    tokens: 50,
+                    cost_micros: 50,
+                    ..ResourceVector::default()
+                },
+            )
+            .expect("child lease");
+        black_box(child.remaining());
+    });
+    measure("resource_charge_and_usage_attribution", 10_000, || {
+        let governor = ResourceGovernor::new(ResourceVector {
+            tokens: 1,
+            cost_micros: 1,
+            ..ResourceVector::default()
+        });
+        let lease = governor
+            .try_lease(
+                "bench",
+                ResourceVector {
+                    tokens: 1,
+                    cost_micros: 1,
+                    ..ResourceVector::default()
+                },
+            )
+            .expect("usage lease");
+        lease
+            .charge(
+                "llm.cache",
+                ResourceVector {
+                    tokens: 1,
+                    cost_micros: 1,
+                    ..ResourceVector::default()
+                },
+                8,
+            )
+            .expect("usage attribution");
+        black_box(governor.usage_records());
+    });
+
+    let proof_head = blake3::hash(b"m00 bench head").to_hex().to_string();
+    let proof_compiler = ProofObligationCompiler;
+    let assessment = ChangeAssessment {
+        exact_head_sha: proof_head,
+        risk: ProofRisk::Low,
+        impact_unknown: false,
+        obligations: vec![ProofObligation {
+            obligation_id: "bench.contract".into(),
+            required_kinds: [ProofKind::Contract].into_iter().collect(),
+        }],
+    };
+    measure("proof_obligation_compile", 20_000, || {
+        black_box(proof_compiler.compile(assessment.clone()).expect("compile"));
+    });
+    let compiled_obligations = proof_compiler
+        .compile(assessment.clone())
+        .expect("compiled obligations");
+    let mut proof_graph = ProofGraph::default();
+    proof_graph
+        .add(ProofNode {
+            proof_id: "bench.contract.proof".into(),
+            kind: ProofKind::Contract,
+            outcome: ProofOutcome::Passed,
+            fingerprint: blake3::hash(b"bench proof").to_hex().to_string(),
+            head_sha: assessment.exact_head_sha.clone(),
+            dependencies: Vec::new(),
+            obligation_ids: vec!["bench.contract".into()],
+            executor_session_id: None,
+            reviewer_session_id: None,
+            metadata: json!({"producer": "m00-baseline"}),
+        })
+        .expect("proof node");
+    measure("proof_minimal_selection", 20_000, || {
+        black_box(
+            proof_graph
+                .certify(&compiled_obligations)
+                .expect("proof selection"),
+        );
+    });
+
+    let mut health = HealthRegistry::default();
+    health
+        .register(ProbePolicy {
+            check_id: "bench.required".into(),
+            required: true,
+            maximum_age_ms: 10_000,
+            degradation_after_failures: 2,
+        })
+        .expect("health policy");
+    health
+        .record(ProbeObservation {
+            check_id: "bench.required".into(),
+            passed: true,
+            observed_at_ms: 100,
+            latency_ms: 1,
+            failure_code: None,
+        })
+        .expect("health observation");
+    measure("readiness_query_one_check", 100_000, || {
+        black_box(health.readiness(101).expect("readiness"));
+    });
+
+    let telemetry = HotPathRegistry::new(16).expect("telemetry registry");
+    measure("telemetry_observation", 100_000, || {
+        telemetry
+            .observe_micros("bench.dispatch", 12)
+            .expect("metric");
+    });
+
+    let ephemeral_bus = EventBus::new([(EventLane::Telemetry, 512)]).expect("ephemeral bus");
+    let _receiver = ephemeral_bus
+        .subscribe(EventLane::Telemetry)
+        .expect("event subscriber");
+    measure("ephemeral_event_fanout", 20_000, || {
+        ephemeral_bus
+            .publish_ephemeral(EventEnvelope {
+                event_id: "bench.telemetry".into(),
+                contract_id: "bench.event".into(),
+                contract_version: "1.0.0".into(),
+                class: EventClass::Telemetry,
+                lane: EventLane::Telemetry,
+                producer: "bench".into(),
+                privacy: PrivacyClass::Internal,
+                causation_id: None,
+                correlation_id: None,
+                execution_id: None,
+                occurred_at_ms: 101,
+                payload: json!({"duration": 12}),
+            })
+            .expect("ephemeral event");
+    });
+
+    let cancellation_parent = CancellationToken::new();
+    let cancellation_child = cancellation_parent.child_token();
+    measure("cancellation_lineage_check", 100_000, || {
+        black_box(cancellation_child.is_cancelled());
+    });
+    measure("cancellation_parent_to_child", 10_000, || {
+        let parent = CancellationToken::new();
+        let child = parent.child_token();
+        parent.cancel();
+        black_box(child.is_cancelled());
+    });
+
+    measure("runtime_start_and_shutdown", 100, || {
+        KernelRuntime::new(RuntimeConfig::default())
+            .expect("kernel runtime")
+            .shutdown();
+    });
+
+    let cold_boot_root = tempfile::tempdir().expect("boot parent");
+    let start = Instant::now();
+    for index in 0..100 {
+        let root = cold_boot_root.path().join(format!("cold-{index}"));
+        let boot = forge_kernel::boot_native(forge_kernel::NativeBootConfig::new(root))
+            .expect("cold native boot");
+        black_box(boot.report.boot_fingerprint);
+        let forge_kernel::NativeBoot {
+            state_store,
+            runtime,
+            ..
+        } = boot;
+        drop(state_store);
+        runtime.shutdown();
+    }
+    report("cold_native_boot", 100, start.elapsed());
+
+    let warm_root = tempfile::tempdir().expect("warm state root");
+    let start = Instant::now();
+    for _ in 0..100 {
+        let boot = forge_kernel::boot_native(forge_kernel::NativeBootConfig::new(warm_root.path()))
+            .expect("warm native boot");
+        black_box(boot.report.boot_fingerprint);
+        let forge_kernel::NativeBoot {
+            state_store,
+            runtime,
+            ..
+        } = boot;
+        drop(state_store);
+        runtime.shutdown();
+    }
+    report("warm_native_boot", 100, start.elapsed());
+
+    let runtime = Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    runtime.block_on(async {
+        let root = tempfile::tempdir().expect("state root");
+        let store = ForgeStateStore::open(root.path())
+            .await
+            .expect("state store");
+        let cache_identity = CacheIdentity::new(
+            "bench",
+            "semantic-proof",
+            blake3::hash(b"input").to_hex().to_string(),
+            BTreeMap::new(),
+            blake3::hash(b"environment").to_hex().to_string(),
+        )
+        .expect("cache identity");
+        cache_put(
+            &store,
+            &cache_identity,
+            "bench",
+            100,
+            10_000,
+            PrivacyClass::Internal,
+            json!({"cached": true}),
+        )
+        .await
+        .expect("cache population");
+        let start = Instant::now();
+        for _ in 0..10_000 {
+            black_box(
+                cache_get(&store, &cache_identity, 101)
+                    .await
+                    .expect("cache lookup"),
+            );
+        }
+        report("semantic_cache_lookup", 10_000, start.elapsed());
+        let start = Instant::now();
+        for index in 0..2_000_u64 {
+            store
+                .put_canonical("bench", "key", &json!({"value": index}))
+                .await
+                .expect("state write");
+        }
+        report("state_transaction_write", 2_000, start.elapsed());
+        let start = Instant::now();
+        for _ in 0..10_000 {
+            black_box(
+                store
+                    .get_canonical("bench", "key")
+                    .await
+                    .expect("state read"),
+            );
+        }
+        report("state_read", 10_000, start.elapsed());
+
+        let event_bus = EventBus::new([(EventLane::DurableDomain, 16)]).expect("event bus");
+        let start = Instant::now();
+        for index in 0..1_000_u64 {
+            event_bus
+                .publish_durable(
+                    &store,
+                    EventEnvelope {
+                        event_id: format!("bench.event.{index}"),
+                        contract_id: "bench.event".into(),
+                        contract_version: "1.0.0".into(),
+                        class: EventClass::DurableLocal,
+                        lane: EventLane::DurableDomain,
+                        producer: "bench".into(),
+                        privacy: PrivacyClass::Internal,
+                        causation_id: None,
+                        correlation_id: None,
+                        execution_id: None,
+                        occurred_at_ms: index,
+                        payload: json!({"sequence": index}),
+                    },
+                )
+                .await
+                .expect("durable event");
+        }
+        report("durable_event_outbox", 1_000, start.elapsed());
+
+        let command_bus = CommandBus::new(1).expect("command bus");
+        command_bus
+            .register(
+                CommandRegistration {
+                    contract: Arc::new(contract),
+                    required_permissions: BTreeSet::new(),
+                    side_effect: SideEffectClass::LocalMutation,
+                    idempotency: IdempotencyMode::CallerKeyed,
+                    emits_events: false,
+                },
+                Arc::new(|_context: CommandContext, payload: Value| {
+                    Box::pin(async move {
+                        Ok(HandlerOutput {
+                            value: payload,
+                            commit_evidence_fingerprint: Some(
+                                blake3::hash(b"command.committed").to_hex().to_string(),
+                            ),
+                            pending_events: Vec::new(),
+                            state_update: None,
+                        })
+                    })
+                }),
+            )
+            .expect("register command");
+        command_bus.seal();
+        let authorization = AuthorizationContext::from_trusted_host("bench", BTreeSet::new())
+            .expect("authorization");
+        let contract_id = ContractId::new("bench.payload").expect("contract id");
+        let fingerprint = |name: &str| blake3::hash(name.as_bytes()).to_hex().to_string();
+        let start = Instant::now();
+        for index in 0..1_000_u64 {
+            let request = CommandRequest {
+                command_id: format!("bench.command.{index}"),
+                principal_id: "bench".into(),
+                contract_id: contract_id.clone(),
+                contract_version: ContractVersion::new(1, 0, 0),
+                idempotency_key: Some(format!("bench.key.{index}")),
+                config_fingerprint: fingerprint("config"),
+                capability_snapshot_fingerprint: fingerprint("capabilities"),
+                dependency_graph_fingerprint: fingerprint("graph"),
+                toolchain_fingerprint: fingerprint("toolchain"),
+                logical_time_ms: index,
+                deterministic_seed: index,
+                sensitivity: SensitivityClass::Public,
+                state_guard: None,
+                payload: json!({"value": index}),
+            };
+            black_box(
+                command_bus
+                    .execute(
+                        &store,
+                        request,
+                        &authorization,
+                        CancellationToken::new(),
+                        Deadline::after(Duration::from_secs(10)),
+                        None,
+                    )
+                    .await
+                    .expect("command dispatch"),
+            );
+        }
+        report("command_dispatch_local_mutation", 1_000, start.elapsed());
+
+        let backup_root = tempfile::tempdir().expect("backup root");
+        let start = Instant::now();
+        store
+            .backup_to(backup_root.path())
+            .await
+            .expect("state backup");
+        report("state_backup_snapshot", 1, start.elapsed());
+        let restore_parent = tempfile::tempdir().expect("restore parent");
+        let start = Instant::now();
+        for index in 0..20 {
+            let restore_root = restore_parent.path().join(format!("restore-{index}"));
+            let restored = ForgeStateStore::restore_from_backup(backup_root.path(), restore_root)
+                .await
+                .expect("state restore");
+            restored
+                .integrity_check()
+                .await
+                .expect("restored integrity");
+            drop(restored);
+        }
+        report("state_backup_restore", 20, start.elapsed());
+    });
+}
+
+fn measure(name: &str, iterations: usize, mut operation: impl FnMut()) {
+    let start = Instant::now();
+    for _ in 0..iterations {
+        operation();
+    }
+    report(name, iterations, start.elapsed());
+}
+
+fn report(name: &str, iterations: usize, elapsed: Duration) {
+    let nanos_per_operation = elapsed.as_nanos() / iterations.max(1) as u128;
+    println!(
+        "benchmark={name} iterations={iterations} elapsed_ms={} ns_per_operation={nanos_per_operation}",
+        elapsed.as_millis()
+    );
+}
