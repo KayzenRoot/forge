@@ -98,6 +98,8 @@ Use monotonic time for runtime deadline enforcement. Wall-clock timestamps are e
 - complete bounded cleanup.
 Hard process termination is last-resort isolation, not ordinary cancellation.
 
+Resource-accounting cancellation follows the same consistency rule: if cancellation or task destruction occurs while a durable usage write may have committed but before its in-memory lease charge is confirmed, the current governor fails closed and requires a fresh boot to reconcile from S08's ledger. A cancellation result alone does not claim that the durable record was rolled back.
+
 ## Shared work/coalescing
 Only operations whose contract permits semantic sharing can coalesce. Caller-specific permissions, secrets, side effects or result visibility can prohibit sharing even when payloads look identical.
 

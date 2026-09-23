@@ -6,8 +6,9 @@ Status: NOT CERTIFIED — exact-head hosted checks and independent assurance rem
 
 - Work Order: `FGE-004-M00`, M00 S01-S22, HIGH risk.
 - Admitted base: `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
-- Implementation branch: `fge-004-m00-implementation`; starting head: `90efa8846b0aaa6615114b4ad363c84b7da46a20`.
-- Fresh UADS plan/run: `wo_b161d2f667649b5c` / `er_586620b1f8dd4753`, final phase `review` / status `in_progress`, linked to Codex thread `01a0cafa-b9b8-77b2-b017-f3187d711916`.
+- Implementation branch: `fge-004-m00-implementation`; original implementation starting head: `90efa8846b0aaa6615114b4ad363c84b7da46a20`.
+- CD3 correction parent: `58a0616da55d574e7e556056f0e47cc46571d7c7`, the PR #9 head when this delta was admitted. The previous exact-head Actions run `35878684088` passed all four configured jobs on that parent only; new-head CI must be recorded separately after the authorized push.
+- Pre-CD3 UADS plan/run: `wo_b161d2f667649b5c` / `er_586620b1f8dd4753`, final phase `review` / status `in_progress`, linked to Codex thread `01a0cafa-b9b8-77b2-b017-f3187d711916`. The final CD3 digest requires fresh verification/evidence preparation.
 - Installed UADS package: v0.12.1. The prepared Codex bundle uses schema v0.11.0 and adapter contract v0.10.0. `implement` exposes 11 non-review assignments through sequential role-cycling; the current `review` bundle exposes zero assignments and fails closed with `INDEPENDENT_REVIEW_BACKEND_REQUIRED`. Hidden background/subagent/parallel capability remains `unknown`; four distinct assurance reviewers remain required, so visible chat activity cannot count as independent review.
 - The two historical failures remain in UADS history: `fail_0a0885d3ae84936c` and `fail_d24e593c9f468786`. The new plan/run preserves their provenance.
 - The pushed candidate SHA will be recorded in PR #9 after its evidence commit. This capsule and the Evidence Bundle do not certify their own containing commit.
@@ -23,11 +24,11 @@ Status: NOT CERTIFIED — exact-head hosted checks and independent assurance rem
 | S05 Resolver / Decision Plane | `resolver` | privacy, locality, freshness and abstention tests | Candidate; multi-provider scaling remains |
 | S06 Causality Graph | `causality` | cycle/change-cone tests and 100-node benchmark | Candidate; large-graph scaling remains |
 | S07 Configuration | `config` | precedence, schema, secret-reference and approval tests; invalid environment override preserves prior config | Candidate; broader filesystem/environment fault suite remains |
-| S08 State / Recovery | `forge-state` | v1→v2 migration, durable usage ledger, atomic shared-pool ceiling, concurrent replay, process-kill rollback, outbox reopen/ack and verified backup/restore | Candidate; independent migration/recovery review remains |
+| S08 State / Recovery | `forge-state` | v1→v2 migration, durable usage ledger, atomic shared-pool ceiling, concurrent replay, process-kill rollback, outbox reopen/ack and verified backup/restore; CD3 adds fail-closed live/durable accounting recovery tests | Candidate; independent migration/recovery review remains |
 | S09 Event Bus | `events` | bounded ephemeral lane, durable outbox, replay and reopened acknowledgement tests | Candidate; exhaustive crash-at-ack schedules remain |
 | S10 Command Bus | `commands` | authorization, idempotency, state guard, event and unknown-outcome tests | Candidate; external-effect reconciliation remains out of scope |
 | S11 Error Taxonomy | `forge-contracts::error` | stable error fingerprint tests | Candidate; failure-neighborhood integration remains |
-| S12 Idempotency / Cancellation | `commands`, `runtime`, `forge-state` | retryability, unknown outcome, cancellation/deadline tests | Candidate; expanded model schedule corpus remains |
+| S12 Idempotency / Cancellation | `commands`, `runtime`, `forge-state` | retryability, unknown outcome, cancellation/deadline tests; CD3 proves cancellation after durable resource usage insertion requires restart reconciliation | Candidate; expanded model schedule corpus remains |
 | S13 Concurrency / Backpressure | `scheduler`, event lanes, resource governor | queue bounds, 128-thread resource reservation, two-boot durable budget race | Candidate; saturation curves and platform stress remain |
 | S14 Cache / Fingerprints | `cache`, `fingerprint`, state cache | exact semantic identity and observed lookup/hit/miss counters | Candidate; token/cost savings are not measured |
 | S15 Plugin / Adapter SDK | `extensions` | scopes, permission intersection, revocation and dormant-state tests | Candidate; no OS sandbox or dynamic execution; adapters remain dormant |
@@ -35,7 +36,7 @@ Status: NOT CERTIFIED — exact-head hosted checks and independent assurance rem
 | S17 Health / Readiness | `health` | required/optional freshness tests; optional HIVE outage leaves core ready while state is degraded | Candidate; configured external-provider outage integration remains |
 | S18 Telemetry / HPR | `telemetry` | bounded cardinality and local snapshot survives optional exporter failure | Candidate; remote exporter and overhead distribution remain |
 | S19 Deterministic Envelope | `determinism` | fingerprint/replay boundary tests | Candidate; full clock/RNG/filesystem replay normalization remains |
-| S20 Resource Governor | `resources`, `boot`, `forge-state` | live token/cost attribution, cumulative parent limits, restart recovery, exact replay deduplication and atomic durable pool ceiling | Candidate; provider billing integration is unavailable and defaults remain fail-closed at zero budgets |
+| S20 Resource Governor | `resources`, `boot`, `forge-state` | live token/cost attribution, cumulative parent limits, restart recovery, exact replay deduplication and atomic durable pool ceiling; CD3 serializes cloned-lease mutation across the durable/live transition and fails closed on ambiguity | Candidate; provider billing integration is unavailable and defaults remain fail-closed at zero budgets |
 | S21 Zero-Dependency Boot | `boot`, `forge-cli doctor` | Windows CLI reports native_ready, schema v2, HIVE not_configured, embeddings disabled | Candidate; local firewall rule creation was denied, so exact-head hosted egress-block checks are required |
 | S22 Test-Proof Foundation | `proof` | exact-head proof graph, obligation compiler, high-risk expansion and gap detection tests | Candidate; final CEC execution, hosted evidence and independent review remain |
 
@@ -70,8 +71,8 @@ Legend: `LOCAL` means named executable local evidence exists; `PARTIAL` means ev
 
 ## Mandatory remaining gates
 
-1. The fresh UADS run has final digest-bound PASS evidence for all nine executable gates; `security-review` and `performance-check` remain pending because each requires its mapped reviewer. The assurance packet also requires four distinct reviewer sessions. Hidden execution capabilities remain `unknown`.
-2. Push the authorized candidate/evidence changes to PR #9 and obtain green governance, Linux, Windows, blocked-network and security/supply-chain checks for that exact head.
+1. The UADS run must carry final-digest PASS evidence for all nine executable gates; `security-review` and `performance-check` require their mapped reviewers. The assurance packet also requires four distinct reviewer sessions. Hidden execution capabilities remain `unknown` unless a runtime probe proves otherwise.
+2. Before approval, PR #9 must show green governance, Linux, Windows, blocked-network and security/supply-chain checks for its exact head. Historical run `35878684088` is parent-head evidence only and cannot qualify a later SHA.
 3. Stop at `REVIEW_BACKEND_REQUIRED` unless UADS can prove execution by distinct independent security, performance, reliability and certification reviewers. Visible chat role-cycling is not independent review.
 4. Keep the PR unmerged, the canonical checkpoint unchanged and M01 out of scope. Do not promote or certify M00 from this executor run.
 

@@ -28,7 +28,7 @@ SQLite is not assumed to be the forever solution for every future distributed wo
 - Large immutable blobs/artifacts: content-addressed object/file layer when appropriate.
 - Cache: separate namespace/tables/files with explicit eviction/rebuild semantics.
 - Evidence: append-oriented records plus content fingerprints; immutable artifacts may live in CAS.
-- Resource usage: append-only SQLite ledger owned by S08; exact replay is a no-op and identity/content drift is rejected.
+- Resource usage: append-only SQLite ledger owned by S08; exact replay is a no-op while the live governor is healthy, and identity/content drift is rejected. The shared pool ceiling is enforced atomically with the durable insert. Native boot applies the live lease charge only after insertion while holding the per-lease accounting gate; an interrupted or ambiguous transition marks the in-memory governor as requiring recovery and blocks new authority until boot replays the ledger.
 - Secrets: never ordinary state rows; only secure references/metadata.
 
 ## Proprietary technologies

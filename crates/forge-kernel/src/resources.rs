@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
@@ -69,6 +70,10 @@ pub struct ResourceUsageRecord {
 pub enum ResourceError {
     #[error("requested resources exceed an available budget")]
     BudgetExceeded,
+    #[error("resource accounting is in progress for this lease")]
+    AccountingInProgress,
+    #[error("resource accounting requires recovery before new authority can be granted")]
+    AccountingReconciliationRequired,
     #[error("resource request is invalid")]
     InvalidRequest,
     #[error("resource lease was revoked")]
@@ -88,6 +93,8 @@ struct GovernorState {
     ordinary_consumed: ResourceVector,
     survival_consumed: ResourceVector,
     usage_records: Vec<ResourceUsageRecord>,
+    accounted_usage: BTreeMap<String, PersistedResourceUsageRecord>,
+    accounting_dirty: bool,
 }
 
 #[derive(Clone)]
@@ -100,6 +107,7 @@ struct LeaseNode {
     grant: ResourceVector,
     remaining: Mutex<ResourceVector>,
     reservation: Arc<RootReservation>,
+    accounting_lock: tokio::sync::Mutex<()>,
     revoked: AtomicBool,
     parent: Option<Arc<LeaseNode>>,
 }
@@ -127,6 +135,8 @@ impl ResourceGovernor {
                 ordinary_consumed: ResourceVector::default(),
                 survival_consumed: ResourceVector::default(),
                 usage_records: Vec::new(),
+                accounted_usage: BTreeMap::new(),
+                accounting_dirty: false,
             })),
         }
     }
@@ -147,6 +157,8 @@ impl ResourceGovernor {
                 ordinary_consumed: ResourceVector::default(),
                 survival_consumed: ResourceVector::default(),
                 usage_records: Vec::new(),
+                accounted_usage: BTreeMap::new(),
+                accounting_dirty: false,
             })),
         })
     }
@@ -187,6 +199,13 @@ impl ResourceGovernor {
                 },
                 cache_tokens_reused: record.cache_tokens_reused,
             });
+            if state
+                .accounted_usage
+                .insert(record.usage_id.clone(), record.clone())
+                .is_some()
+            {
+                return Err(ResourceError::InvalidRequest);
+            }
         }
         drop(state);
         Ok(governor)
@@ -231,6 +250,24 @@ impl ResourceGovernor {
         lock_recover(&self.inner).usage_records.clone()
     }
 
+    pub(crate) fn accounted_usage_record(
+        &self,
+        usage_id: &str,
+    ) -> Option<PersistedResourceUsageRecord> {
+        lock_recover(&self.inner)
+            .accounted_usage
+            .get(usage_id)
+            .cloned()
+    }
+
+    pub(crate) fn mark_accounting_dirty(&self) {
+        lock_recover(&self.inner).accounting_dirty = true;
+    }
+
+    pub(crate) fn accounting_requires_recovery(&self) -> bool {
+        lock_recover(&self.inner).accounting_dirty
+    }
+
     pub fn try_survival_lease(
         &self,
         owner: impl Into<String>,
@@ -250,6 +287,9 @@ impl ResourceGovernor {
             return Err(ResourceError::InvalidRequest);
         }
         let mut state = lock_recover(&self.inner);
+        if state.accounting_dirty {
+            return Err(ResourceError::AccountingReconciliationRequired);
+        }
         let (limit, consumed, reserved) = match pool {
             LeasePool::Ordinary => (
                 state.ordinary_limit,
@@ -283,6 +323,7 @@ impl ResourceGovernor {
                 grant: requested,
                 remaining: Mutex::new(requested),
                 reservation,
+                accounting_lock: tokio::sync::Mutex::new(()),
                 revoked: AtomicBool::new(false),
                 parent: None,
             }),
@@ -304,15 +345,35 @@ impl ResourceLease {
     }
 
     pub fn ensure_active(&self) -> Result<(), ResourceError> {
-        if self.node.is_revoked() {
-            Err(ResourceError::Revoked)
-        } else {
-            Ok(())
+        let _accounting_guard = self
+            .node
+            .accounting_lock
+            .try_lock()
+            .map_err(|_| ResourceError::AccountingInProgress)?;
+        let governor = self
+            .node
+            .reservation
+            .governor
+            .upgrade()
+            .ok_or(ResourceError::InvalidRequest)?;
+        let state = lock_recover(&governor);
+        if state.accounting_dirty {
+            return Err(ResourceError::AccountingReconciliationRequired);
         }
+        self.ensure_not_revoked()
     }
 
     pub fn revoke(&self) {
+        if let Some(governor) = self.node.reservation.governor.upgrade() {
+            let _state = lock_recover(&governor);
+            self.node.revoked.store(true, Ordering::Release);
+            return;
+        }
         self.node.revoked.store(true, Ordering::Release);
+    }
+
+    pub(crate) async fn lock_for_accounting(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.node.accounting_lock.lock().await
     }
 
     pub(crate) fn validate_charge(
@@ -324,7 +385,6 @@ impl ResourceLease {
         if !valid_token(category) || used == ResourceVector::default() && cache_tokens_reused == 0 {
             return Err(ResourceError::InvalidRequest);
         }
-        self.ensure_active()?;
         let governor = self
             .node
             .reservation
@@ -332,6 +392,10 @@ impl ResourceLease {
             .upgrade()
             .ok_or(ResourceError::InvalidRequest)?;
         let state = lock_recover(&governor);
+        if state.accounting_dirty {
+            return Err(ResourceError::AccountingReconciliationRequired);
+        }
+        self.ensure_not_revoked()?;
         if state.usage_records.len() >= 100_000 {
             return Err(ResourceError::InvalidRequest);
         }
@@ -375,17 +439,58 @@ impl ResourceLease {
             .upgrade()
             .ok_or(ResourceError::InvalidRequest)?;
         let state = lock_recover(&governor);
+        if state.accounting_dirty {
+            return Err(ResourceError::AccountingReconciliationRequired);
+        }
         Ok(match self.node.reservation.pool {
             LeasePool::Ordinary => state.ordinary_limit,
             LeasePool::Survival => state.survival_limit,
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn charge(
         &self,
         category: &str,
         used: ResourceVector,
         cache_tokens_reused: u64,
+    ) -> Result<(), ResourceError> {
+        self.charge_inner(category, used, cache_tokens_reused, None)
+    }
+
+    pub(crate) fn charge_persisted(
+        &self,
+        record: &PersistedResourceUsageRecord,
+    ) -> Result<(), ResourceError> {
+        let pool = match self.node.reservation.pool {
+            LeasePool::Ordinary => ResourceUsagePool::Ordinary,
+            LeasePool::Survival => ResourceUsagePool::Survival,
+        };
+        if record.owner != self.node.owner || record.pool != pool {
+            return Err(ResourceError::InvalidRequest);
+        }
+        let used = ResourceVector {
+            cpu_millis: record.used.cpu_millis,
+            memory_bytes: record.used.memory_bytes,
+            disk_bytes: record.used.disk_bytes,
+            network_bytes: record.used.network_bytes,
+            tokens: record.used.tokens,
+            cost_micros: record.used.cost_micros,
+        };
+        self.charge_inner(
+            &record.category,
+            used,
+            record.cache_tokens_reused,
+            Some(record),
+        )
+    }
+
+    fn charge_inner(
+        &self,
+        category: &str,
+        used: ResourceVector,
+        cache_tokens_reused: u64,
+        persisted_record: Option<&PersistedResourceUsageRecord>,
     ) -> Result<(), ResourceError> {
         if !valid_token(category) || used == ResourceVector::default() && cache_tokens_reused == 0 {
             return Err(ResourceError::InvalidRequest);
@@ -397,10 +502,18 @@ impl ResourceLease {
             .upgrade()
             .ok_or(ResourceError::InvalidRequest)?;
         let mut state = lock_recover(&governor);
+        if state.accounting_dirty {
+            return Err(ResourceError::AccountingReconciliationRequired);
+        }
+        self.ensure_not_revoked()?;
         if state.usage_records.len() >= 100_000 {
             return Err(ResourceError::InvalidRequest);
         }
-        self.ensure_active()?;
+        if persisted_record
+            .is_some_and(|record| state.accounted_usage.contains_key(&record.usage_id))
+        {
+            return Err(ResourceError::AccountingReconciliationRequired);
+        }
         let mut remaining = lock_recover(&self.node.remaining);
         let next_remaining = remaining
             .checked_sub(used)
@@ -453,6 +566,11 @@ impl ResourceLease {
             used,
             cache_tokens_reused,
         });
+        if let Some(record) = persisted_record {
+            state
+                .accounted_usage
+                .insert(record.usage_id.clone(), record.clone());
+        }
         Ok(())
     }
 
@@ -461,11 +579,26 @@ impl ResourceLease {
         owner: impl Into<String>,
         requested: ResourceVector,
     ) -> Result<ResourceLease, ResourceError> {
-        self.ensure_active()?;
+        let _accounting_guard = self
+            .node
+            .accounting_lock
+            .try_lock()
+            .map_err(|_| ResourceError::AccountingInProgress)?;
         let owner = owner.into();
         if !valid_token(&owner) || requested == ResourceVector::default() {
             return Err(ResourceError::InvalidRequest);
         }
+        let governor = self
+            .node
+            .reservation
+            .governor
+            .upgrade()
+            .ok_or(ResourceError::InvalidRequest)?;
+        let state = lock_recover(&governor);
+        if state.accounting_dirty {
+            return Err(ResourceError::AccountingReconciliationRequired);
+        }
+        self.ensure_not_revoked()?;
         let mut remaining = lock_recover(&self.node.remaining);
         let next = remaining
             .checked_sub(requested)
@@ -477,10 +610,19 @@ impl ResourceLease {
                 grant: requested,
                 remaining: Mutex::new(requested),
                 reservation: Arc::clone(&self.node.reservation),
+                accounting_lock: tokio::sync::Mutex::new(()),
                 revoked: AtomicBool::new(false),
                 parent: Some(Arc::clone(&self.node)),
             }),
         })
+    }
+
+    fn ensure_not_revoked(&self) -> Result<(), ResourceError> {
+        if self.node.is_revoked() {
+            Err(ResourceError::Revoked)
+        } else {
+            Ok(())
+        }
     }
 }
 

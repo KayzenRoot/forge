@@ -8,7 +8,7 @@
 | `command_intents` | Idempotency identity and effect outcome | Committed outcomes replay only recorded safe result data; unknown outcomes are not blindly retried |
 | `event_outbox` | Durable event envelopes and delivery state | Ordered pending records can be replayed and acknowledged idempotently |
 | `evidence` | Immutable proof/evidence records | Fingerprinted records are stored separately from observations |
-| `resource_usage` | Immutable S20 token/cost accounting with owner, pool and project/work-order/execution/capability/provider attribution | Stable usage identity makes replay a no-op; conflicting identity reuse is rejected |
+| `resource_usage` | Immutable S20 token/cost accounting with owner, pool and project/work-order/execution/capability/provider attribution; insert and shared-pool ceiling are one durable transaction | Stable usage identity makes replay a no-op; conflicting identity reuse is rejected. Live boot applies the matching in-memory lease charge after the durable insert under a per-lease gate. If that transition is interrupted or ambiguous, the governor blocks new authority until a fresh boot replays this ledger. |
 | `disposable_cache` | Reusable noncanonical values | May be cleared; cache miss must not affect correctness |
 
 ## Migration policy
@@ -26,6 +26,7 @@ The SQLite database has a monotonic `PRAGMA user_version`. Schema version 1 is a
 
 - Version 1 to version 2 migration and canonical state preservation.
 - Resource usage survives reopen, exact replay is deduplicated, conflicting reuse is rejected and boot restores consumed token/cost totals before new leases.
+- Deterministic CD3 accounting tests cover cloned-lease delegation contention, cancellation after durable insertion, revocation after durable insertion, persistence failure, conflicting replay, and restart reconciliation. These tests exercise the live/durable accounting boundary; they do not certify external provider billing.
 - Compare-and-set conflict for competing transitions.
 - Immutable evidence and content-addressed integrity checks.
 - Cache deletion independence from canonical state.
