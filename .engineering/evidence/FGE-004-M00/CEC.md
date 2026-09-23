@@ -6,7 +6,7 @@ Status: NOT CERTIFIED — mandatory gaps and hosted/independent gates remain ope
 
 | Section | Candidate authority | Local evidence | Status / open proof |
 |---|---|---|---|
-| S01 Kernel Runtime | `forge-kernel::boot`, `runtime` | runtime bound, native boot and cancellation tests | Candidate; hosted Linux/Windows offline jobs passed at implementation commit; rerun is required for the final evidence head |
+| S01 Kernel Runtime | `forge-kernel::boot`, `runtime` | runtime bound, native boot and cancellation tests | Candidate; inspect current-head hosted platform jobs in PR checks after each commit |
 | S02 Module Lifecycle | `lifecycle` | lifecycle transition/readiness tests | Candidate; full rollback rehearsal open |
 | S03 Contract Fabric | `forge-contracts::contract` | positive/negative schema tests and CLI validator | Candidate; broad contract property corpus open |
 | S04 Capability Registry | `capabilities` | immutable snapshots, evidence monotonicity, quarantine tests | Candidate; forged-evidence host provenance needs review |
@@ -26,7 +26,7 @@ Status: NOT CERTIFIED — mandatory gaps and hosted/independent gates remain ope
 | S18 Telemetry / HPR | `telemetry` | bounded names/cardinality and aggregate tests | Candidate; exporter-failure and statistically bounded overhead open |
 | S19 Deterministic Envelope | `determinism` | fingerprint/replay boundary tests | Candidate; full clock/RNG/filesystem replay normalization open |
 | S20 Resource Governor | `resources`, resolver | hierarchical ceilings, non-borrowable reserve, token/cost charges and owner/category attribution tests | Candidate; durable ledger, live runtime wiring and measured cache savings remain open |
-| S21 Zero-Dependency Boot | `boot`, `forge-cli doctor` | Windows offline build and native smoke; Linux and Windows blocked-network CI passed at implementation commit | Candidate; rerun is required for the final evidence head |
+| S21 Zero-Dependency Boot | `boot`, `forge-cli doctor` | Windows offline build and native smoke; Linux and Windows blocked-network jobs are required for each current PR head | Candidate; hosted results are linked from the PR |
 | S22 Test-Proof Foundation | `proof` | exact-head proof graph, obligation compiler, high-risk expansion, gap detection, bounded exact MSPS selection | Candidate; full FPG/PPE/GPC/CEV/FNE/VEP/PFH and exact-head CEC execution are partial |
 
 ## Invariant evidence map
@@ -61,11 +61,10 @@ Legend: `LOCAL` means named executable local evidence exists; `PARTIAL` means ev
 ## Mandatory certification gaps
 
 1. Re-establish the UADS path scope in a new plan and dispatch, then run its gates against the final candidate; the current run stopped and cannot certify this tree.
-2. Re-run exact-head Linux and Windows network/DNS-isolated `doctor` jobs after the final evidence commit and inspect their hosted results.
-3. Persist token/cost attribution, wire the governor into the live runtime and measure cache-reuse savings if the Work Order cost criteria are to be marked complete.
-4. Complete missing fault/concurrency/property/performance scenarios listed in the work order, including idle-memory and repeatability measurements.
-5. Produce a trusted, genuinely independent assurance decision; the implementer cannot generate or attest to it.
-6. Bind the final CEC and Evidence Bundle to the pushed final head, required CI and a current UADS digest before any certification claim.
+2. Persist token/cost attribution, wire the governor into the live runtime and measure cache-reuse savings if the Work Order cost criteria are to be marked complete.
+3. Complete missing fault/concurrency/property/performance scenarios listed in the work order, including idle-memory and repeatability measurements.
+4. Produce a trusted, genuinely independent assurance decision; the implementer cannot generate or attest to it.
+5. Bind the final CEC and Evidence Bundle to the pushed final head, green current-head CI and a current UADS digest before any certification claim.
 
 ## Verdict
 

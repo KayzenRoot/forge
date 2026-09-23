@@ -37,7 +37,7 @@ Canonical source SHA-256 values are in [SOURCE-FINGERPRINTS.sha256](SOURCE-FINGE
 | `cargo-deny 0.20.2 check` | PASS: advisories, bans, licenses and sources; warns about duplicate `cpufeatures`, `hashbrown`, and `syn` versions |
 | `cargo-audit 0.22.2 audit --deny warnings` | PASS against 1,264 loaded RustSec advisories and 189 locked dependencies on 2026-09-23 |
 | `cargo run -p forge-cli --locked --offline -- doctor --data-dir <fresh-temp-root>` | PASS on Windows: `native_ready`, database integrity `ok`, schema v1, HIVE `not_configured`, embeddings `disabled` |
-| GitHub Actions run `35815592979` at implementation commit `502601e585b324288b02b451a1557aa3e94eeed3` | PASS: governance, Windows, Linux/network-blocked doctor, and security-supply-chain jobs; this evidence update creates a new PR head and requires a fresh exact-head run |
+| GitHub Actions run `35816105638` at candidate evidence head `75775bde55945bb16d7f89bba2c703e029d48db0` | PASS: governance, Windows, Linux/network-blocked doctor, and security-supply-chain jobs; PR checks are authoritative for later heads and must be refreshed after each commit |
 | `uads verify --json` | BLOCKED: plan `wo_782d35d1e669291c` rejects the Rust workspace, workflow, M00 docs/modules, ADR and evidence paths as out-of-scope; after stopping, UADS refuses another verify until a new plan/run is created |
 | `uads status --json` | BLOCKED: phase `stopped`, status `blocked`, eight gates pending, four reviewers pending |
 | `uads cache status --json` / `uads cost status --json` | Cache: 0 reusable records; budget status `ok`; token estimate is a byte heuristic and no gates were executed |
