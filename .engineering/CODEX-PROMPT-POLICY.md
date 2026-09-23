@@ -13,4 +13,7 @@ For every Forge project chat:
 7. Reviews return APPROVED / CORRECTION REQUIRED / BLOCKED. Small safe defects are fixed here when possible; only remaining executor-required deltas go back to Codex.
 8. This policy applies automatically to future chats and does not require the user to repeat the request.
 
+9. Independent-review backend availability is NOT a pre-implementation blocker unless the admitted Work Order explicitly requires reviewer availability before dispatch. The executor may proceed through implementation, verification, evidence, push and PR creation, but MUST stop before assurance/finalize when no genuinely independent reviewer session/backend is available. Never satisfy independence by renaming the implementer session or self-approving.
+10. Missing host tooling such as GitHub CLI must be handled at the latest safe point that needs it. A prompt may install or repair host tooling non-destructively when authorized, but absence of `gh` alone must not prevent local implementation/testing. If authentication cannot be established safely, preserve the branch/evidence and stop before the affected GitHub action rather than fabricating success.
+
 Canonical precedence remains .engineering/SOURCE-HIERARCHY.md and AGENTS.md.
