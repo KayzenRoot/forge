@@ -142,7 +142,7 @@ impl HealthRegistry {
         let bytes = serde_json::to_vec(&report_input).map_err(|_| HealthError::Fingerprint)?;
         Ok(ReadinessReport {
             state,
-            ready: state == HealthState::Ready,
+            ready: failed_required.is_empty(),
             failed_required,
             degraded_optional,
             escalated_failures,
@@ -180,7 +180,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn readiness_requires_fresh_required_checks_and_degrades_optional_checks() {
+    fn optional_hive_outage_degrades_only_the_optional_capability() {
         let mut registry = HealthRegistry::default();
         registry
             .register(ProbePolicy {
@@ -207,10 +207,45 @@ mod tests {
                 failure_code: None,
             })
             .expect("record");
+        registry
+            .record(ProbeObservation {
+                check_id: "hive.optional".into(),
+                passed: false,
+                observed_at_ms: 110,
+                latency_ms: 10,
+                failure_code: Some("HIVE_UNAVAILABLE".into()),
+            })
+            .expect("record optional integration outage");
         let report = registry.readiness(120).expect("report");
         assert_eq!(report.state, HealthState::Degraded);
-        assert!(!report.ready);
+        assert!(report.ready);
         assert_eq!(report.degraded_optional, vec!["hive.optional"]);
+    }
+
+    #[test]
+    fn stale_required_state_keeps_the_core_not_ready() {
+        let mut registry = HealthRegistry::default();
+        registry
+            .register(ProbePolicy {
+                check_id: "store.integrity".into(),
+                required: true,
+                maximum_age_ms: 10,
+                degradation_after_failures: 1,
+            })
+            .expect("required probe");
+        registry
+            .record(ProbeObservation {
+                check_id: "store.integrity".into(),
+                passed: true,
+                observed_at_ms: 100,
+                latency_ms: 2,
+                failure_code: None,
+            })
+            .expect("record");
+        let report = registry.readiness(120).expect("stale required report");
+        assert_eq!(report.state, HealthState::Unknown);
+        assert!(!report.ready);
+        assert_eq!(report.failed_required, vec!["store.integrity"]);
     }
 
     #[test]

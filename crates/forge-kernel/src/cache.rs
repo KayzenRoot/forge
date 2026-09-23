@@ -37,6 +37,44 @@ pub enum CacheLookup {
     FingerprintMismatch,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CacheAccessCounters {
+    pub lookups: u64,
+    pub hits: u64,
+    pub misses: u64,
+    pub stale: u64,
+    pub fingerprint_mismatches: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CacheLookupObservation {
+    pub lookup: CacheLookupKind,
+    pub before: CacheAccessCounters,
+    pub after: CacheAccessCounters,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CacheLookupKind {
+    Hit,
+    Miss,
+    Stale,
+    FingerprintMismatch,
+}
+
+impl CacheAccessCounters {
+    fn record(&mut self, result: &CacheLookup) {
+        self.lookups = self.lookups.saturating_add(1);
+        match result {
+            CacheLookup::Hit(_) => self.hits = self.hits.saturating_add(1),
+            CacheLookup::Miss => self.misses = self.misses.saturating_add(1),
+            CacheLookup::Stale => self.stale = self.stale.saturating_add(1),
+            CacheLookup::FingerprintMismatch => {
+                self.fingerprint_mismatches = self.fingerprint_mismatches.saturating_add(1);
+            }
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum CacheError {
     #[error("cache identity or policy is invalid")]
@@ -160,6 +198,29 @@ pub async fn get(
     Ok(CacheLookup::Hit(entry.value))
 }
 
+pub async fn get_observed(
+    store: &ForgeStateStore,
+    identity: &CacheIdentity,
+    now_ms: u64,
+    counters: &mut CacheAccessCounters,
+) -> Result<CacheLookupObservation, CacheError> {
+    let before = *counters;
+    let lookup = get(store, identity, now_ms).await?;
+    counters.record(&lookup);
+    let after = *counters;
+    let kind = match lookup {
+        CacheLookup::Hit(_) => CacheLookupKind::Hit,
+        CacheLookup::Miss => CacheLookupKind::Miss,
+        CacheLookup::Stale => CacheLookupKind::Stale,
+        CacheLookup::FingerprintMismatch => CacheLookupKind::FingerprintMismatch,
+    };
+    Ok(CacheLookupObservation {
+        lookup: kind,
+        before,
+        after,
+    })
+}
+
 fn validate_identity(identity: &CacheIdentity) -> Result<(), CacheError> {
     if identity.schema_version != 1 {
         return Err(CacheError::InvalidIdentity);
@@ -262,5 +323,59 @@ mod tests {
             .await,
             Err(CacheError::PrivacyDenied)
         ));
+    }
+
+    #[tokio::test]
+    async fn cache_reuse_counters_bind_to_repeated_exact_input_lookups() {
+        let root = tempfile::tempdir().expect("temp directory");
+        let store = ForgeStateStore::open(root.path()).await.expect("store");
+        let input = json!({"operation": "proof.compile", "nodes": ["a", "b", "c"]});
+        let identity = CacheIdentity::new(
+            "project-a",
+            "test-proof",
+            blake3::hash(&serde_json::to_vec(&input).expect("input json"))
+                .to_hex()
+                .to_string(),
+            BTreeMap::from([("schema".into(), digest("proof-schema-v1"))]),
+            digest("rust-1.98.1"),
+        )
+        .expect("identity");
+        put(
+            &store,
+            &identity,
+            "forge.kernel",
+            100,
+            50,
+            PrivacyClass::Internal,
+            json!({"obligations": 3, "valid": true}),
+        )
+        .await
+        .expect("cache seed");
+
+        let mut counters = CacheAccessCounters::default();
+        let observation = get_observed(&store, &identity, 120, &mut counters)
+            .await
+            .expect("measured cache hit");
+        assert_eq!(observation.lookup, CacheLookupKind::Hit);
+        assert_eq!(observation.before, CacheAccessCounters::default());
+        assert_eq!(
+            observation.after,
+            CacheAccessCounters {
+                lookups: 1,
+                hits: 1,
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            get_observed(&store, &identity, 120, &mut counters)
+                .await
+                .expect("repeat exact lookup")
+                .after,
+            CacheAccessCounters {
+                lookups: 2,
+                hits: 2,
+                ..Default::default()
+            }
+        );
     }
 }

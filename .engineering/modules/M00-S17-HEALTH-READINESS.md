@@ -98,6 +98,8 @@ Dependencies are REQUIRED, OPTIONAL or CONDITIONAL for a given workload/capabili
 - OPTIONAL unavailable -> affected enhancement DEGRADED/UNAVAILABLE, core path remains ready.
 - CONDITIONAL evaluated against requested capability/workload.
 
+The aggregate `ready` flag means all registered required probes are fresh and passing. Optional failures may set the aggregate state to `DEGRADED` while `ready` remains true for the core path; affected capabilities still report degradation.
+
 ## Sovereign standalone behavior
 HIVE, Core/Hades, IRIS, remote providers and Internet are optional for universal native Forge operation. Their loss cannot fail kernel liveness/readiness unless a requested workload explicitly requires that capability and no native fallback exists.
 

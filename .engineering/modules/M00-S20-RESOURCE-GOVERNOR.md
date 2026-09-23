@@ -123,7 +123,7 @@ CRITICAL -> OSM, preserve Survival Reserve, reject expensive work, cancel safe l
 UNKNOWN -> conservative ceilings; no adaptive expansion.
 
 ## Accounting
-Every meaningful consumption record links to project/work-order/execution/capability/provider. S18 TCAL consumes token/cost data. Accounting can be sampled for very cheap resources, but budget enforcement counters remain authoritative where required.
+Every meaningful consumption record links to project/work-order/execution/capability/provider. S18 TCAL consumes token/cost data. Accounting can be sampled for very cheap resources, but budget enforcement counters remain authoritative where required. Native boot restores token/cost totals from S08's immutable ledger before it issues new leases; each durable record has a stable 64-hex usage identity, and replaying the same identity/content is a no-op while changed content is rejected. Provider token/cost budgets default to zero until a caller explicitly configures them.
 
 ## Standalone/platform portability
 FRG works locally with conservative software budgets even where OS hard limits are unavailable. Windows/Linux adapters expose actual enforceable features. Missing cgroups/job-object/GPU controls are capabilities, not hidden assumptions.

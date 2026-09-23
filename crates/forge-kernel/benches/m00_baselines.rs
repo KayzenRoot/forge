@@ -7,7 +7,9 @@ use forge_contracts::{
     ContractDefinition, ContractId, ContractVersion, Fingerprint, FingerprintKind,
     ValidatedContract,
 };
-use forge_kernel::cache::{CacheIdentity, get as cache_get, put as cache_put};
+use forge_kernel::cache::{
+    CacheAccessCounters, CacheIdentity, get_observed as cache_get_observed, put as cache_put,
+};
 use forge_kernel::capabilities::{
     CapabilityDescriptor, CapabilityRegistry, EvidenceLevel, HealthState, Locality, PrivacyClass,
     SideEffectClass,
@@ -29,7 +31,10 @@ use forge_kernel::resolver::{ResolutionRequest, resolve};
 use forge_kernel::resources::{ResourceGovernor, ResourceVector};
 use forge_kernel::runtime::{CancellationToken, Deadline, KernelRuntime, RuntimeConfig};
 use forge_kernel::telemetry::HotPathRegistry;
-use forge_state::ForgeStateStore;
+use forge_state::{
+    ForgeStateStore, PersistedResourceUsageRecord, PersistedResourceVector,
+    ResourceUsageAttribution, ResourceUsagePool,
+};
 use serde_json::{Value, json};
 use tokio::runtime::Builder;
 
@@ -196,36 +201,6 @@ fn main() {
             .expect("child lease");
         black_box(child.remaining());
     });
-    measure("resource_charge_and_usage_attribution", 10_000, || {
-        let governor = ResourceGovernor::new(ResourceVector {
-            tokens: 1,
-            cost_micros: 1,
-            ..ResourceVector::default()
-        });
-        let lease = governor
-            .try_lease(
-                "bench",
-                ResourceVector {
-                    tokens: 1,
-                    cost_micros: 1,
-                    ..ResourceVector::default()
-                },
-            )
-            .expect("usage lease");
-        lease
-            .charge(
-                "llm.cache",
-                ResourceVector {
-                    tokens: 1,
-                    cost_micros: 1,
-                    ..ResourceVector::default()
-                },
-                8,
-            )
-            .expect("usage attribution");
-        black_box(governor.usage_records());
-    });
-
     let proof_head = blake3::hash(b"m00 bench head").to_hex().to_string();
     let proof_compiler = ProofObligationCompiler;
     let assessment = ChangeAssessment {
@@ -337,43 +312,101 @@ fn main() {
     });
 
     let cold_boot_root = tempfile::tempdir().expect("boot parent");
-    let start = Instant::now();
-    for index in 0..100 {
-        let root = cold_boot_root.path().join(format!("cold-{index}"));
-        let boot = forge_kernel::boot_native(forge_kernel::NativeBootConfig::new(root))
-            .expect("cold native boot");
-        black_box(boot.report.boot_fingerprint);
-        let forge_kernel::NativeBoot {
-            state_store,
-            runtime,
-            ..
-        } = boot;
-        drop(state_store);
-        runtime.shutdown();
+    let mut cold_samples = Vec::new();
+    for sample in 0..5 {
+        let start = Instant::now();
+        for index in 0..20 {
+            let root = cold_boot_root.path().join(format!("cold-{sample}-{index}"));
+            let boot = forge_kernel::boot_native(forge_kernel::NativeBootConfig::new(root))
+                .expect("cold native boot");
+            black_box(&boot.report.boot_fingerprint);
+            drop(boot);
+        }
+        cold_samples.push(start.elapsed());
     }
-    report("cold_native_boot", 100, start.elapsed());
+    report_samples("cold_native_boot", 20, cold_samples);
 
     let warm_root = tempfile::tempdir().expect("warm state root");
-    let start = Instant::now();
-    for _ in 0..100 {
-        let boot = forge_kernel::boot_native(forge_kernel::NativeBootConfig::new(warm_root.path()))
-            .expect("warm native boot");
-        black_box(boot.report.boot_fingerprint);
-        let forge_kernel::NativeBoot {
-            state_store,
-            runtime,
-            ..
-        } = boot;
-        drop(state_store);
-        runtime.shutdown();
+    let mut warm_samples = Vec::new();
+    for _ in 0..5 {
+        let start = Instant::now();
+        for _ in 0..20 {
+            let boot =
+                forge_kernel::boot_native(forge_kernel::NativeBootConfig::new(warm_root.path()))
+                    .expect("warm native boot");
+            black_box(&boot.report.boot_fingerprint);
+            drop(boot);
+        }
+        warm_samples.push(start.elapsed());
     }
-    report("warm_native_boot", 100, start.elapsed());
+    report_samples("warm_native_boot", 20, warm_samples);
+
+    let usage_root = tempfile::tempdir().expect("resource usage state root");
+    let mut usage_config = forge_kernel::NativeBootConfig::new(usage_root.path());
+    usage_config.resource_limits = ResourceVector {
+        tokens: 1_000,
+        cost_micros: 1_000,
+        ..Default::default()
+    };
+    let usage_boot = forge_kernel::boot_native(usage_config).expect("usage runtime boot");
+    let usage_lease = usage_boot
+        .try_resource_lease(
+            "bench.usage",
+            ResourceVector {
+                tokens: 1_000,
+                cost_micros: 1_000,
+                ..Default::default()
+            },
+        )
+        .expect("usage budget");
 
     let runtime = Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("tokio runtime");
     runtime.block_on(async {
+        let mut usage_samples = Vec::new();
+        let mut usage_sequence = 0_u64;
+        for sample in 0..5 {
+            let start = Instant::now();
+            for index in 0..200 {
+                let usage_id =
+                    blake3::hash(format!("m00-resource-usage-{usage_sequence}").as_bytes())
+                        .to_hex()
+                        .to_string();
+                usage_sequence += 1;
+                let record = PersistedResourceUsageRecord {
+                    usage_id,
+                    pool: ResourceUsagePool::Ordinary,
+                    owner: "bench.usage".into(),
+                    category: "provider.inference".into(),
+                    used: PersistedResourceVector {
+                        tokens: 1,
+                        cost_micros: 1,
+                        ..Default::default()
+                    },
+                    cache_tokens_reused: 8,
+                    attribution: ResourceUsageAttribution {
+                        project_id: "bench".into(),
+                        work_order_id: "FGE-004-M00".into(),
+                        execution_id: format!("bench.sample.{sample}"),
+                        capability_id: "forge.ai.inference".into(),
+                        provider_id: Some("provider.synthetic".into()),
+                    },
+                };
+                black_box(
+                    usage_boot
+                        .account_resource_usage(&usage_lease, &record)
+                        .await
+                        .expect("durable resource accounting"),
+                );
+                black_box(index);
+            }
+            usage_samples.push(start.elapsed());
+        }
+        assert_eq!(usage_boot.consumed_resource_budget().tokens, 1_000);
+        report_samples("resource_usage_durable", 200, usage_samples);
+
         let root = tempfile::tempdir().expect("state root");
         let store = ForgeStateStore::open(root.path())
             .await
@@ -397,59 +430,87 @@ fn main() {
         )
         .await
         .expect("cache population");
-        let start = Instant::now();
-        for _ in 0..10_000 {
-            black_box(
-                cache_get(&store, &cache_identity, 101)
-                    .await
-                    .expect("cache lookup"),
-            );
+        let mut cache_counters = CacheAccessCounters::default();
+        let cache_before = cache_counters;
+        let mut cache_samples = Vec::new();
+        for _ in 0..5 {
+            let start = Instant::now();
+            for _ in 0..2_000 {
+                black_box(
+                    cache_get_observed(&store, &cache_identity, 101, &mut cache_counters)
+                        .await
+                        .expect("cache lookup"),
+                );
+            }
+            cache_samples.push(start.elapsed());
         }
-        report("semantic_cache_lookup", 10_000, start.elapsed());
-        let start = Instant::now();
-        for index in 0..2_000_u64 {
-            store
-                .put_canonical("bench", "key", &json!({"value": index}))
-                .await
-                .expect("state write");
-        }
-        report("state_transaction_write", 2_000, start.elapsed());
-        let start = Instant::now();
-        for _ in 0..10_000 {
-            black_box(
+        report_samples("semantic_cache_lookup", 2_000, cache_samples);
+        println!(
+            "cache_evidence identity={} before={:?} after={:?} token_savings=not_measured",
+            cache_identity.fingerprint, cache_before, cache_counters
+        );
+
+        let mut state_write_samples = Vec::new();
+        let mut write_sequence = 0_u64;
+        for _ in 0..5 {
+            let start = Instant::now();
+            for _ in 0..400 {
                 store
-                    .get_canonical("bench", "key")
+                    .put_canonical("bench", "key", &json!({"value": write_sequence}))
                     .await
-                    .expect("state read"),
-            );
+                    .expect("state write");
+                write_sequence += 1;
+            }
+            state_write_samples.push(start.elapsed());
         }
-        report("state_read", 10_000, start.elapsed());
+        report_samples("state_transaction_write", 400, state_write_samples);
+        let mut state_read_samples = Vec::new();
+        for _ in 0..5 {
+            let start = Instant::now();
+            for _ in 0..2_000 {
+                black_box(
+                    store
+                        .get_canonical("bench", "key")
+                        .await
+                        .expect("state read"),
+                );
+            }
+            state_read_samples.push(start.elapsed());
+        }
+        report_samples("state_read", 2_000, state_read_samples);
 
         let event_bus = EventBus::new([(EventLane::DurableDomain, 16)]).expect("event bus");
-        let start = Instant::now();
-        for index in 0..1_000_u64 {
-            event_bus
-                .publish_durable(
-                    &store,
-                    EventEnvelope {
-                        event_id: format!("bench.event.{index}"),
-                        contract_id: "bench.event".into(),
-                        contract_version: "1.0.0".into(),
-                        class: EventClass::DurableLocal,
-                        lane: EventLane::DurableDomain,
-                        producer: "bench".into(),
-                        privacy: PrivacyClass::Internal,
-                        causation_id: None,
-                        correlation_id: None,
-                        execution_id: None,
-                        occurred_at_ms: index,
-                        payload: json!({"sequence": index}),
-                    },
-                )
-                .await
-                .expect("durable event");
+        let mut event_samples = Vec::new();
+        let mut event_sequence = 0_u64;
+        for _ in 0..5 {
+            let start = Instant::now();
+            for _ in 0..200 {
+                let index = event_sequence;
+                event_sequence += 1;
+                event_bus
+                    .publish_durable(
+                        &store,
+                        EventEnvelope {
+                            event_id: format!("bench.event.{index}"),
+                            contract_id: "bench.event".into(),
+                            contract_version: "1.0.0".into(),
+                            class: EventClass::DurableLocal,
+                            lane: EventLane::DurableDomain,
+                            producer: "bench".into(),
+                            privacy: PrivacyClass::Internal,
+                            causation_id: None,
+                            correlation_id: None,
+                            execution_id: None,
+                            occurred_at_ms: index,
+                            payload: json!({"sequence": index}),
+                        },
+                    )
+                    .await
+                    .expect("durable event");
+            }
+            event_samples.push(start.elapsed());
         }
-        report("durable_event_outbox", 1_000, start.elapsed());
+        report_samples("durable_event_outbox", 200, event_samples);
 
         let command_bus = CommandBus::new(1).expect("command bus");
         command_bus
@@ -480,76 +541,109 @@ fn main() {
             .expect("authorization");
         let contract_id = ContractId::new("bench.payload").expect("contract id");
         let fingerprint = |name: &str| blake3::hash(name.as_bytes()).to_hex().to_string();
-        let start = Instant::now();
-        for index in 0..1_000_u64 {
-            let request = CommandRequest {
-                command_id: format!("bench.command.{index}"),
-                principal_id: "bench".into(),
-                contract_id: contract_id.clone(),
-                contract_version: ContractVersion::new(1, 0, 0),
-                idempotency_key: Some(format!("bench.key.{index}")),
-                config_fingerprint: fingerprint("config"),
-                capability_snapshot_fingerprint: fingerprint("capabilities"),
-                dependency_graph_fingerprint: fingerprint("graph"),
-                toolchain_fingerprint: fingerprint("toolchain"),
-                logical_time_ms: index,
-                deterministic_seed: index,
-                sensitivity: SensitivityClass::Public,
-                state_guard: None,
-                payload: json!({"value": index}),
-            };
-            black_box(
-                command_bus
-                    .execute(
-                        &store,
-                        request,
-                        &authorization,
-                        CancellationToken::new(),
-                        Deadline::after(Duration::from_secs(10)),
-                        None,
-                    )
-                    .await
-                    .expect("command dispatch"),
-            );
+        let mut command_samples = Vec::new();
+        let mut command_sequence = 0_u64;
+        for _ in 0..5 {
+            let start = Instant::now();
+            for _ in 0..200 {
+                let index = command_sequence;
+                command_sequence += 1;
+                let request = CommandRequest {
+                    command_id: format!("bench.command.{index}"),
+                    principal_id: "bench".into(),
+                    contract_id: contract_id.clone(),
+                    contract_version: ContractVersion::new(1, 0, 0),
+                    idempotency_key: Some(format!("bench.key.{index}")),
+                    config_fingerprint: fingerprint("config"),
+                    capability_snapshot_fingerprint: fingerprint("capabilities"),
+                    dependency_graph_fingerprint: fingerprint("graph"),
+                    toolchain_fingerprint: fingerprint("toolchain"),
+                    logical_time_ms: index,
+                    deterministic_seed: index,
+                    sensitivity: SensitivityClass::Public,
+                    state_guard: None,
+                    payload: json!({"value": index}),
+                };
+                black_box(
+                    command_bus
+                        .execute(
+                            &store,
+                            request,
+                            &authorization,
+                            CancellationToken::new(),
+                            Deadline::after(Duration::from_secs(10)),
+                            None,
+                        )
+                        .await
+                        .expect("command dispatch"),
+                );
+            }
+            command_samples.push(start.elapsed());
         }
-        report("command_dispatch_local_mutation", 1_000, start.elapsed());
+        report_samples("command_dispatch_local_mutation", 200, command_samples);
 
         let backup_root = tempfile::tempdir().expect("backup root");
-        let start = Instant::now();
-        store
-            .backup_to(backup_root.path())
-            .await
-            .expect("state backup");
-        report("state_backup_snapshot", 1, start.elapsed());
+        let mut backup_samples = Vec::new();
+        for sample in 0..5 {
+            let start = Instant::now();
+            store
+                .backup_to(backup_root.path().join(format!("snapshot-{sample}")))
+                .await
+                .expect("state backup");
+            backup_samples.push(start.elapsed());
+        }
+        report_samples("state_backup_snapshot", 1, backup_samples);
         let restore_parent = tempfile::tempdir().expect("restore parent");
-        let start = Instant::now();
-        for index in 0..20 {
-            let restore_root = restore_parent.path().join(format!("restore-{index}"));
-            let restored = ForgeStateStore::restore_from_backup(backup_root.path(), restore_root)
+        let mut restore_samples = Vec::new();
+        for sample in 0..5 {
+            let start = Instant::now();
+            for index in 0..4 {
+                let restore_root = restore_parent
+                    .path()
+                    .join(format!("restore-{sample}-{index}"));
+                let restored = ForgeStateStore::restore_from_backup(
+                    backup_root.path().join("snapshot-0"),
+                    restore_root,
+                )
                 .await
                 .expect("state restore");
-            restored
-                .integrity_check()
-                .await
-                .expect("restored integrity");
-            drop(restored);
+                restored
+                    .integrity_check()
+                    .await
+                    .expect("restored integrity");
+                drop(restored);
+            }
+            restore_samples.push(start.elapsed());
         }
-        report("state_backup_restore", 20, start.elapsed());
+        report_samples("state_backup_restore", 4, restore_samples);
     });
 }
 
 fn measure(name: &str, iterations: usize, mut operation: impl FnMut()) {
-    let start = Instant::now();
-    for _ in 0..iterations {
-        operation();
+    let sample_count = 5;
+    let iterations_per_sample = iterations.div_ceil(sample_count).max(1);
+    let mut samples = Vec::with_capacity(sample_count);
+    for _ in 0..sample_count {
+        let start = Instant::now();
+        for _ in 0..iterations_per_sample {
+            operation();
+        }
+        samples.push(start.elapsed());
     }
-    report(name, iterations, start.elapsed());
+    report_samples(name, iterations_per_sample, samples);
 }
 
-fn report(name: &str, iterations: usize, elapsed: Duration) {
-    let nanos_per_operation = elapsed.as_nanos() / iterations.max(1) as u128;
+fn report_samples(name: &str, iterations_per_sample: usize, samples: Vec<Duration>) {
+    let mut nanos_per_operation = samples
+        .iter()
+        .map(|elapsed| elapsed.as_nanos() / iterations_per_sample.max(1) as u128)
+        .collect::<Vec<_>>();
+    nanos_per_operation.sort_unstable();
+    let median = nanos_per_operation[nanos_per_operation.len() / 2];
+    let min = nanos_per_operation[0];
+    let max = *nanos_per_operation.last().expect("samples exist");
     println!(
-        "benchmark={name} iterations={iterations} elapsed_ms={} ns_per_operation={nanos_per_operation}",
-        elapsed.as_millis()
+        "benchmark={name} samples={} iterations_per_sample={iterations_per_sample} median_ns_per_operation={median} min_ns_per_operation={min} max_ns_per_operation={max}",
+        nanos_per_operation.len()
     );
 }

@@ -14,6 +14,7 @@ Forge MUST distinguish:
 3. CACHE — disposable/rebuildable acceleration state.
 4. EPHEMERAL — process/session state that must not be relied upon after restart.
 5. EXTERNAL_REFERENCE — identifiers/pointers to state owned by another system, never silently copied into Forge authority.
+6. RESOURCE_USAGE — immutable canonical S20 records with stable replay identity and project/work-order/execution/capability/provider attribution.
 
 A value cannot change state class implicitly.
 
@@ -27,6 +28,7 @@ SQLite is not assumed to be the forever solution for every future distributed wo
 - Large immutable blobs/artifacts: content-addressed object/file layer when appropriate.
 - Cache: separate namespace/tables/files with explicit eviction/rebuild semantics.
 - Evidence: append-oriented records plus content fingerprints; immutable artifacts may live in CAS.
+- Resource usage: append-only SQLite ledger owned by S08; exact replay is a no-op and identity/content drift is rejected.
 - Secrets: never ordinary state rows; only secure references/metadata.
 
 ## Proprietary technologies

@@ -15,6 +15,16 @@ pub struct MetricSnapshot {
     pub histogram_buckets: Vec<u64>,
 }
 
+pub trait TelemetryExporter {
+    fn export(&self, metrics: &[MetricSnapshot]) -> Result<(), TelemetryExportError>;
+}
+
+#[derive(Debug, Error, Eq, PartialEq)]
+pub enum TelemetryExportError {
+    #[error("optional telemetry exporter is unavailable")]
+    Unavailable,
+}
+
 #[derive(Debug, Error, Eq, PartialEq)]
 pub enum TelemetryError {
     #[error("metric name is invalid")]
@@ -80,6 +90,10 @@ impl HotPathRegistry {
             .collect()
     }
 
+    pub fn export(&self, exporter: &impl TelemetryExporter) -> Result<(), TelemetryExportError> {
+        exporter.export(&self.snapshot())
+    }
+
     fn metric<'a>(
         &self,
         metrics: &'a mut BTreeMap<String, Metric>,
@@ -135,5 +149,29 @@ mod tests {
         let metrics = registry.snapshot();
         assert_eq!(metrics[1].observations, 1);
         assert_eq!(metrics[1].histogram_buckets[1], 1);
+    }
+
+    #[test]
+    fn optional_exporter_failure_preserves_local_metrics_and_collection() {
+        struct UnavailableExporter;
+
+        impl TelemetryExporter for UnavailableExporter {
+            fn export(&self, _metrics: &[MetricSnapshot]) -> Result<(), TelemetryExportError> {
+                Err(TelemetryExportError::Unavailable)
+            }
+        }
+
+        let registry = HotPathRegistry::new(2).expect("registry");
+        registry.increment("kernel.boot", 1).expect("first count");
+        let before = registry.snapshot();
+        assert_eq!(
+            registry.export(&UnavailableExporter),
+            Err(TelemetryExportError::Unavailable)
+        );
+        assert_eq!(registry.snapshot(), before);
+        registry
+            .increment("kernel.boot", 1)
+            .expect("collection continues");
+        assert_eq!(registry.snapshot()[0].counter, 2);
     }
 }

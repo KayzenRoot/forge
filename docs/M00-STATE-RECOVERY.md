@@ -8,11 +8,12 @@
 | `command_intents` | Idempotency identity and effect outcome | Committed outcomes replay only recorded safe result data; unknown outcomes are not blindly retried |
 | `event_outbox` | Durable event envelopes and delivery state | Ordered pending records can be replayed and acknowledged idempotently |
 | `evidence` | Immutable proof/evidence records | Fingerprinted records are stored separately from observations |
+| `resource_usage` | Immutable S20 token/cost accounting with owner, pool and project/work-order/execution/capability/provider attribution | Stable usage identity makes replay a no-op; conflicting identity reuse is rejected |
 | `disposable_cache` | Reusable noncanonical values | May be cleared; cache miss must not affect correctness |
 
 ## Migration policy
 
-The SQLite database has a monotonic `PRAGMA user_version`. Schema version 1 is applied in one transaction during open. The runtime rejects a database newer than its supported schema. A migration must have a versioned forward step, an upgrade rehearsal from the previous schema, integrity checks, and a documented recovery boundary before its schema version is advanced. M00 currently has only the initial schema; no destructive downgrade is provided.
+The SQLite database has a monotonic `PRAGMA user_version`. Schema version 1 is applied in one transaction during open. Schema version 2 adds `resource_usage` in a separate transaction; opening a version 1 store migrates it forward while preserving canonical rows. The runtime rejects a database newer than its supported schema. A migration must have a versioned forward step, an upgrade rehearsal from the previous schema, integrity checks and a documented recovery boundary before its schema version is advanced. No destructive downgrade is provided.
 
 ## Backup and restore
 
@@ -23,7 +24,8 @@ The SQLite database has a monotonic `PRAGMA user_version`. Schema version 1 is a
 
 ## Recovery tests present in the candidate
 
-- Migration/open and canonical state persistence.
+- Version 1 to version 2 migration and canonical state preservation.
+- Resource usage survives reopen, exact replay is deduplicated, conflicting reuse is rejected and boot restores consumed token/cost totals before new leases.
 - Compare-and-set conflict for competing transitions.
 - Immutable evidence and content-addressed integrity checks.
 - Cache deletion independence from canonical state.
@@ -31,4 +33,4 @@ The SQLite database has a monotonic `PRAGMA user_version`. Schema version 1 is a
 - Tampered backup database rejection.
 - Outbox ordering and idempotent event identity.
 
-Process-kill fault injection at every transaction boundary and partial migration rehearsal remain certification gaps; the current unit suite is not a substitute for those proofs.
+The process-kill test terminates a writer with an open SQLite transaction and verifies rollback after reopen. It covers this transaction boundary only; exhaustive crash-at-every-boundary fault injection and destructive migration rehearsal remain certification gaps.

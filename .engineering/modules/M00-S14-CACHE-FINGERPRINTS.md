@@ -68,6 +68,8 @@ Caches bounded evidence of absence/failure only when semantics permit, with shor
 ### Token Reuse Ledger (TRL)
 Records context/prompt/decision reuse and estimates tokens/calls avoided versus spent. It measures real savings without allowing token minimization to weaken correctness.
 
+Current M00 cache observations count exact-identity lookups and their outcomes. Cached values are provider-agnostic, so hit counts do not establish avoided model tokens, calls or money; those savings remain unmeasured until a provider supplies attributable usage data.
+
 ## Hashing
 BLAKE3 remains primary candidate for high-throughput local fingerprints/CAS. Cryptographic/security-signature use cases are separate and choose algorithms appropriate to their threat model. Hash algorithm/version is encoded in identity.
 

@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
+use forge_state::{PersistedResourceUsageRecord, ResourceUsagePool};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -150,6 +151,47 @@ impl ResourceGovernor {
         })
     }
 
+    pub(crate) fn from_persisted_usage(
+        limit: ResourceVector,
+        survival_reserve: ResourceVector,
+        records: &[PersistedResourceUsageRecord],
+    ) -> Result<Self, ResourceError> {
+        if records.len() > 100_000 {
+            return Err(ResourceError::InvalidRequest);
+        }
+        let governor = Self::with_survival_reserve(limit, survival_reserve)?;
+        let mut state = lock_recover(&governor.inner);
+        for record in records {
+            let used_budget = ResourceVector {
+                tokens: record.used.tokens,
+                cost_micros: record.used.cost_micros,
+                ..ResourceVector::default()
+            };
+            let consumed = match record.pool {
+                ResourceUsagePool::Ordinary => &mut state.ordinary_consumed,
+                ResourceUsagePool::Survival => &mut state.survival_consumed,
+            };
+            *consumed = consumed
+                .checked_add(used_budget)
+                .ok_or(ResourceError::InvalidRequest)?;
+            state.usage_records.push(ResourceUsageRecord {
+                owner: record.owner.clone(),
+                category: record.category.clone(),
+                used: ResourceVector {
+                    cpu_millis: record.used.cpu_millis,
+                    memory_bytes: record.used.memory_bytes,
+                    disk_bytes: record.used.disk_bytes,
+                    network_bytes: record.used.network_bytes,
+                    tokens: record.used.tokens,
+                    cost_micros: record.used.cost_micros,
+                },
+                cache_tokens_reused: record.cache_tokens_reused,
+            });
+        }
+        drop(state);
+        Ok(governor)
+    }
+
     pub fn try_lease(
         &self,
         owner: impl Into<String>,
@@ -273,7 +315,73 @@ impl ResourceLease {
         self.node.revoked.store(true, Ordering::Release);
     }
 
-    pub fn charge(
+    pub(crate) fn validate_charge(
+        &self,
+        category: &str,
+        used: ResourceVector,
+        cache_tokens_reused: u64,
+    ) -> Result<(), ResourceError> {
+        if !valid_token(category) || used == ResourceVector::default() && cache_tokens_reused == 0 {
+            return Err(ResourceError::InvalidRequest);
+        }
+        self.ensure_active()?;
+        let governor = self
+            .node
+            .reservation
+            .governor
+            .upgrade()
+            .ok_or(ResourceError::InvalidRequest)?;
+        let state = lock_recover(&governor);
+        if state.usage_records.len() >= 100_000 {
+            return Err(ResourceError::InvalidRequest);
+        }
+        lock_recover(&self.node.remaining)
+            .checked_sub(used)
+            .ok_or(ResourceError::BudgetExceeded)?;
+        let used_budget = ResourceVector {
+            tokens: used.tokens,
+            cost_micros: used.cost_micros,
+            ..ResourceVector::default()
+        };
+        let reservation_amount = lock_recover(&self.node.reservation.amount);
+        reservation_amount
+            .checked_sub(used_budget)
+            .ok_or(ResourceError::BudgetExceeded)?;
+        let (limit, consumed) = match self.node.reservation.pool {
+            LeasePool::Ordinary => (state.ordinary_limit, state.ordinary_consumed),
+            LeasePool::Survival => (state.survival_limit, state.survival_consumed),
+        };
+        let next_consumed = consumed
+            .checked_add(used_budget)
+            .ok_or(ResourceError::BudgetExceeded)?;
+        if next_consumed.tokens > limit.tokens || next_consumed.cost_micros > limit.cost_micros {
+            return Err(ResourceError::BudgetExceeded);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn pool(&self) -> ResourceUsagePool {
+        match self.node.reservation.pool {
+            LeasePool::Ordinary => ResourceUsagePool::Ordinary,
+            LeasePool::Survival => ResourceUsagePool::Survival,
+        }
+    }
+
+    pub(crate) fn pool_limit(&self) -> Result<ResourceVector, ResourceError> {
+        let governor = self
+            .node
+            .reservation
+            .governor
+            .upgrade()
+            .ok_or(ResourceError::InvalidRequest)?;
+        let state = lock_recover(&governor);
+        Ok(match self.node.reservation.pool {
+            LeasePool::Ordinary => state.ordinary_limit,
+            LeasePool::Survival => state.survival_limit,
+        })
+    }
+
+    pub(crate) fn charge(
         &self,
         category: &str,
         used: ResourceVector,
@@ -430,6 +538,7 @@ fn lock_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use std::sync::Barrier;
 
     #[test]
     fn child_budget_cannot_exceed_parent_and_returns_when_released() {
@@ -477,6 +586,44 @@ mod tests {
         assert_eq!(governor.reserved().cpu_millis, 80);
         drop(parent);
         assert_eq!(governor.reserved().cpu_millis, 0);
+    }
+
+    #[test]
+    fn concurrent_resource_reservations_never_over_admit_the_root_limit() {
+        const WORKERS: usize = 128;
+        const LIMIT: u64 = 64;
+        let governor = ResourceGovernor::new(ResourceVector {
+            tokens: LIMIT,
+            ..Default::default()
+        });
+        let barrier = Arc::new(Barrier::new(WORKERS + 1));
+        let workers = (0..WORKERS)
+            .map(|index| {
+                let governor = governor.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    governor.try_lease(
+                        format!("worker.{index}"),
+                        ResourceVector {
+                            tokens: 1,
+                            ..Default::default()
+                        },
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        barrier.wait();
+        let leases = workers
+            .into_iter()
+            .map(|worker| worker.join().expect("reservation worker exits"))
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+
+        assert_eq!(leases.len(), LIMIT as usize);
+        assert_eq!(governor.reserved().tokens, LIMIT);
+        drop(leases);
+        assert_eq!(governor.reserved().tokens, 0);
     }
 
     #[test]
@@ -829,7 +976,7 @@ mod tests {
         fn reservations_never_exceed_the_root_ceiling(limit in 0_u64..10_000, request in 0_u64..20_000) {
             let governor = ResourceGovernor::new(ResourceVector { tokens: limit, ..Default::default() });
             let result = governor.try_lease("property", ResourceVector { tokens: request, ..Default::default() });
-            prop_assert_eq!(result.is_ok(), request <= limit);
+            prop_assert_eq!(result.is_ok(), request != 0 && request <= limit);
             prop_assert!(governor.reserved().tokens <= limit);
         }
     }

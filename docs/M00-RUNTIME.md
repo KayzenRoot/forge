@@ -17,7 +17,9 @@ The `hash` command accepts regular files up to 256 MiB. Contract validation acce
 
 ## State boundary
 
-Canonical state, command idempotency, the durable event outbox and immutable evidence live in SQLite under the selected state root. Disposable cache entries use a separate table and may be deleted without changing canonical state. Backups are written to a new directory with a BLAKE3 manifest; restore validates the manifest and database integrity and writes to a new root. See [M00 state recovery](M00-STATE-RECOVERY.md).
+Canonical state, command idempotency, the durable event outbox, immutable evidence and the append-only resource-usage ledger live in SQLite under the selected state root. Schema version 2 migrates existing version 1 stores forward. Disposable cache entries use a separate table and may be deleted without changing canonical state. Backups are written to a new directory with a BLAKE3 manifest; restore validates the manifest and database integrity and writes to a new root. See [M00 state recovery](M00-STATE-RECOVERY.md).
+
+`NativeBoot` restores recorded token/cost consumption before issuing new resource leases. Callers must explicitly configure token/cost budgets; they default to zero. Live usage records require a stable 64-hex identity plus project, work-order, execution, capability and optional provider attribution. An exact replay is not charged twice, and conflicting reuse of an identity is rejected. The ledger fingerprint is included in the boot report.
 
 ## Optional HIVE context
 

@@ -331,6 +331,26 @@ mod tests {
     }
 
     #[test]
+    fn invalid_environment_override_does_not_replace_published_configuration() {
+        let registry = registry();
+        let mut initial_inputs = ConfigInputs::default();
+        initial_inputs.insert(ConfigLayer::Project, "forge.runtime.workers", json!(4));
+        let store = ConfigStore::new(
+            registry
+                .resolve(&initial_inputs)
+                .expect("published project config"),
+        );
+
+        let mut environment = ConfigInputs::default();
+        environment.insert(ConfigLayer::Environment, "forge.runtime.workers", json!(0));
+        assert_eq!(
+            registry.resolve(&environment).err(),
+            Some(ConfigError::InvalidValue)
+        );
+        assert_eq!(store.snapshot().values["forge.runtime.workers"], json!(4));
+    }
+
+    #[test]
     fn failed_reload_preserves_the_published_capsule() {
         let registry = registry();
         let mut initial_inputs = ConfigInputs::default();
