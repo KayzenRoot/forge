@@ -197,3 +197,12 @@ Forbidden:
 
 ## Acceptance criteria
 S13 is accepted when Forge has bounded multi-resource admission, explicit lanes, fair scheduling, adaptive-but-capped concurrency, deadline-aware queues, overload survival and measurable backpressure that preserves kernel/recovery correctness under saturation.
+
+## C03 bounded-cost rotation
+
+Each lane keeps a FIFO per owner and a FIFO owner-rotation ring. The rotation step is constant time;
+owner lookup/removal uses the ordered map and is logarithmic in owner count. Dequeue removes the
+map/ring entry only when that owner's queue becomes empty; it does not scan the other owners to
+remove an item. The M00 benchmark exercises rotation at 100, 1,000, and 10,000 owners. Durable
+resource accounting measures 200 writes at five successive ledger sizes to show whether write cost
+changes with history size.

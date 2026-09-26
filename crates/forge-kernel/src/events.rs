@@ -151,6 +151,47 @@ impl EventBus {
         })
     }
 
+    pub fn validate_durable_before_commit(&self, event: &EventEnvelope) -> Result<(), EventError> {
+        if !matches!(
+            event.class,
+            EventClass::DurableLocal | EventClass::Integration | EventClass::AuditEvidence
+        ) {
+            return Err(EventError::ClassMismatch);
+        }
+        self.validate(event)?;
+        if !self.lanes.contains_key(&event.lane) {
+            return Err(EventError::MissingLane);
+        }
+        Ok(())
+    }
+
+    pub fn validate_ephemeral_before_commit(
+        &self,
+        event: &EventEnvelope,
+    ) -> Result<(), EventError> {
+        if event.class != EventClass::EphemeralLocal && event.class != EventClass::Telemetry {
+            return Err(EventError::ClassMismatch);
+        }
+        self.validate(event)?;
+        if !self.lanes.contains_key(&event.lane) {
+            return Err(EventError::MissingLane);
+        }
+        Ok(())
+    }
+
+    /// Publishes an event whose durable outbox row was committed with its command receipt.
+    pub fn publish_committed(&self, event: EventEnvelope) -> Result<PublishReceipt, EventError> {
+        self.validate_durable_before_commit(&event)?;
+        let sender = self.lanes.get(&event.lane).ok_or(EventError::MissingLane)?;
+        let event_id = event.event_id.clone();
+        let receiver_count = sender.send(event).unwrap_or(0);
+        Ok(PublishReceipt {
+            durable: true,
+            receiver_count,
+            event_id,
+        })
+    }
+
     pub async fn replay_pending(
         &self,
         store: &ForgeStateStore,
@@ -189,6 +230,8 @@ impl EventBus {
     }
 
     fn validate(&self, event: &EventEnvelope) -> Result<(), EventError> {
+        forge_state::validate_payload_for_persistence(&event.payload)
+            .map_err(|_| EventError::PrivacyDenied)?;
         let valid = !event.event_id.trim().is_empty()
             && event.event_id.len() <= 160
             && !event.contract_id.trim().is_empty()

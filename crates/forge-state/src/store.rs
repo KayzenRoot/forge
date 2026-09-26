@@ -1,16 +1,19 @@
+use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::{Row, SqlitePool};
 use thiserror::Error;
+use tokio::sync::watch;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS forge_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS canonical_state (owner TEXT NOT NULL, key TEXT NOT NULL, value BLOB NOT NULL, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (owner, key))",
@@ -24,8 +27,21 @@ const RESOURCE_USAGE_MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS resource_usage (usage_id TEXT PRIMARY KEY, pool TEXT NOT NULL CHECK(pool IN ('ordinary', 'survival')), tokens INTEGER NOT NULL CHECK(tokens >= 0), cost_micros INTEGER NOT NULL CHECK(cost_micros >= 0), payload BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)",
     "CREATE INDEX IF NOT EXISTS resource_usage_pool ON resource_usage(pool, created_at, usage_id)",
 ];
+const CORRECTION_MIGRATIONS: &[&str] = &[
+    "ALTER TABLE command_intents ADD COLUMN owner_instance_id TEXT",
+    "ALTER TABLE command_intents ADD COLUMN lease_expires_at_ms INTEGER",
+    "CREATE TABLE IF NOT EXISTS store_instances (instance_id TEXT PRIMARY KEY, heartbeat_at_ms INTEGER NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS store_instances_heartbeat ON store_instances(heartbeat_at_ms)",
+    "CREATE TABLE IF NOT EXISTS resource_usage_totals (pool TEXT PRIMARY KEY CHECK(pool IN ('ordinary', 'survival')), tokens INTEGER NOT NULL CHECK(tokens >= 0), cost_micros INTEGER NOT NULL CHECK(cost_micros >= 0), record_count INTEGER NOT NULL CHECK(record_count >= 0))",
+    "INSERT OR IGNORE INTO resource_usage_totals(pool, tokens, cost_micros, record_count) SELECT pool, SUM(tokens), SUM(cost_micros), COUNT(*) FROM resource_usage GROUP BY pool",
+    "INSERT OR IGNORE INTO resource_usage_totals(pool, tokens, cost_micros, record_count) VALUES('ordinary', 0, 0, 0), ('survival', 0, 0, 0)",
+    "CREATE TABLE IF NOT EXISTS authorization_decisions (decision_id TEXT PRIMARY KEY, claims_fingerprint TEXT NOT NULL, consumed_at_ms INTEGER, revoked_at_ms INTEGER)",
+];
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+static STORE_INSTANCE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+const OWNER_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+const OWNER_LEASE_MS: i64 = 60_000;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -90,6 +106,14 @@ pub struct StoredEvent {
     pub event_id: String,
     pub contract_id: String,
     pub payload: Value,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CanonicalStateTransition {
+    pub owner: String,
+    pub key: String,
+    pub expected_version: Option<u64>,
+    pub value: Value,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -169,12 +193,27 @@ pub enum StateError {
     StateConflict,
     #[error("backup target must be new and isolated")]
     BackupTargetExists,
+    #[error("payload contains secret material or secret-bearing fields")]
+    SensitivePayload,
+    #[error("resource usage ledger reached its shared record limit")]
+    ResourceLedgerLimit,
+    #[error("host authorization decision is expired, revoked, or has already been used")]
+    AuthorizationDecisionRejected,
+    #[error("this store instance no longer owns a live command lease")]
+    OwnerLeaseLost,
 }
 
 #[derive(Clone)]
 pub struct ForgeStateStore {
     root: PathBuf,
     pool: SqlitePool,
+    owner: Arc<StoreOwner>,
+}
+
+struct StoreOwner {
+    instance_id: String,
+    healthy: Arc<AtomicBool>,
+    _shutdown: watch::Sender<bool>,
 }
 
 impl ForgeStateStore {
@@ -207,10 +246,23 @@ impl ForgeStateStore {
             .connect_with(options)
             .await
             .map_err(StateError::Storage)?;
-        let store = Self { root, pool };
+        let instance_id = new_store_instance_id();
+        let (shutdown, receiver) = watch::channel(false);
+        let healthy = Arc::new(AtomicBool::new(true));
+        let store = Self {
+            root,
+            pool,
+            owner: Arc::new(StoreOwner {
+                instance_id,
+                healthy: Arc::clone(&healthy),
+                _shutdown: shutdown,
+            }),
+        };
         store.migrate().await?;
         store.integrity_check().await?;
+        store.register_store_instance().await?;
         store.mark_interrupted_commands_unknown().await?;
+        store.start_owner_heartbeat(receiver, healthy);
         Ok(store)
     }
 
@@ -226,12 +278,83 @@ impl ForgeStateStore {
         SCHEMA_VERSION as u16
     }
 
+    fn ensure_owner_healthy(&self) -> Result<(), StateError> {
+        if self.owner.healthy.load(Ordering::Acquire) {
+            Ok(())
+        } else {
+            Err(StateError::OwnerLeaseLost)
+        }
+    }
+
+    async fn register_store_instance(&self) -> Result<(), StateError> {
+        sqlx::query("INSERT INTO store_instances(instance_id, heartbeat_at_ms) VALUES(?1, ?2)")
+            .bind(&self.owner.instance_id)
+            .bind(unix_time_ms()?)
+            .execute(&self.pool)
+            .await
+            .map_err(StateError::Storage)?;
+        Ok(())
+    }
+
+    fn start_owner_heartbeat(&self, mut shutdown: watch::Receiver<bool>, healthy: Arc<AtomicBool>) {
+        let pool = self.pool.clone();
+        let instance_id = self.owner.instance_id.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    changed = shutdown.changed() => {
+                        if changed.is_err() || *shutdown.borrow() {
+                            break;
+                        }
+                    }
+                    () = tokio::time::sleep(OWNER_HEARTBEAT_INTERVAL) => {
+                        let now = match unix_time_ms() {
+                            Ok(value) => value,
+                            Err(_) => {
+                                healthy.store(false, Ordering::Release);
+                                break;
+                            }
+                        };
+                        let heartbeat = sqlx::query("UPDATE store_instances SET heartbeat_at_ms=?2 WHERE instance_id=?1")
+                            .bind(&instance_id)
+                            .bind(now)
+                            .execute(&pool)
+                            .await;
+                        match heartbeat {
+                            Ok(result) if result.rows_affected() == 1 => {}
+                            _ => {
+                                healthy.store(false, Ordering::Release);
+                                break;
+                            }
+                        }
+                        let lease_expires_at = now.saturating_add(OWNER_LEASE_MS);
+                        if sqlx::query("UPDATE command_intents SET lease_expires_at_ms=?2 WHERE state='in_flight' AND owner_instance_id=?1")
+                            .bind(&instance_id)
+                            .bind(lease_expires_at)
+                            .execute(&pool)
+                            .await
+                            .is_err()
+                        {
+                            healthy.store(false, Ordering::Release);
+                            break;
+                        }
+                    }
+                }
+            }
+            let _ = sqlx::query("DELETE FROM store_instances WHERE instance_id=?1")
+                .bind(&instance_id)
+                .execute(&pool)
+                .await;
+        });
+    }
+
     pub async fn record_resource_usage(
         &self,
         record: &PersistedResourceUsageRecord,
         pool_limit: &PersistedResourceVector,
     ) -> Result<bool, StateError> {
         validate_resource_usage_record(record)?;
+        ensure_safe_payload(&serde_json::to_value(record).map_err(StateError::Serialization)?)?;
         let payload = serde_json::to_vec(record).map_err(StateError::Serialization)?;
         let pool = match record.pool {
             ResourceUsagePool::Ordinary => "ordinary",
@@ -245,37 +368,65 @@ impl ForgeStateStore {
             i64::try_from(pool_limit.tokens).map_err(|_| StateError::ResourceBudgetExceeded)?;
         let cost_limit = i64::try_from(pool_limit.cost_micros)
             .map_err(|_| StateError::ResourceBudgetExceeded)?;
-        let inserted = sqlx::query(
-            "INSERT INTO resource_usage(usage_id, pool, tokens, cost_micros, payload) SELECT ?1, ?2, ?3, ?4, ?5 WHERE COALESCE((SELECT SUM(tokens) FROM resource_usage WHERE pool=?2), 0) <= ?6 - ?3 AND COALESCE((SELECT SUM(cost_micros) FROM resource_usage WHERE pool=?2), 0) <= ?7 - ?4 ON CONFLICT(usage_id) DO NOTHING",
-        )
-        .bind(&record.usage_id)
-        .bind(pool)
-        .bind(tokens)
-        .bind(cost_micros)
-        .bind(&payload)
-        .bind(token_limit)
-        .bind(cost_limit)
-        .execute(&self.pool)
-        .await
-        .map_err(StateError::Storage)?
-        .rows_affected();
-        if inserted == 1 {
-            return Ok(true);
-        }
-        let existing = sqlx::query("SELECT payload FROM resource_usage WHERE usage_id=?1")
-            .bind(&record.usage_id)
-            .fetch_optional(&self.pool)
+        // Acquire SQLite's writer reservation before reading. A deferred transaction lets two
+        // writers both read the same totals and then fail while upgrading their locks.
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(StateError::Storage)?;
-        let Some(existing) = existing else {
-            return Err(StateError::ResourceBudgetExceeded);
-        };
-        let existing_payload: Vec<u8> = existing.try_get("payload").map_err(StateError::Storage)?;
-        if existing_payload == payload {
-            Ok(false)
-        } else {
-            Err(StateError::ResourceUsageConflict)
+        if let Some(existing) = sqlx::query("SELECT payload FROM resource_usage WHERE usage_id=?1")
+            .bind(&record.usage_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(StateError::Storage)?
+        {
+            let existing_payload: Vec<u8> =
+                existing.try_get("payload").map_err(StateError::Storage)?;
+            transaction.rollback().await.map_err(StateError::Storage)?;
+            return if existing_payload == payload {
+                Ok(false)
+            } else {
+                Err(StateError::ResourceUsageConflict)
+            };
         }
+
+        let reserved = sqlx::query("UPDATE resource_usage_totals SET tokens=tokens+?2, cost_micros=cost_micros+?3, record_count=record_count+1 WHERE pool=?1 AND record_count < 100000 AND (SELECT COALESCE(SUM(record_count), 0) FROM resource_usage_totals) < 100000 AND tokens <= ?4 - ?2 AND cost_micros <= ?5 - ?3")
+            .bind(pool)
+            .bind(tokens)
+            .bind(cost_micros)
+            .bind(token_limit)
+            .bind(cost_limit)
+            .execute(&mut *transaction)
+            .await
+            .map_err(StateError::Storage)?
+            .rows_affected();
+        if reserved != 1 {
+            let row = sqlx::query(
+                "SELECT COALESCE(SUM(record_count), 0) AS total FROM resource_usage_totals",
+            )
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(StateError::Storage)?;
+            let total: i64 = row.try_get("total").map_err(StateError::Storage)?;
+            transaction.rollback().await.map_err(StateError::Storage)?;
+            return if total >= 100_000 {
+                Err(StateError::ResourceLedgerLimit)
+            } else {
+                Err(StateError::ResourceBudgetExceeded)
+            };
+        }
+        sqlx::query("INSERT INTO resource_usage(usage_id, pool, tokens, cost_micros, payload) VALUES(?1, ?2, ?3, ?4, ?5)")
+            .bind(&record.usage_id)
+            .bind(pool)
+            .bind(tokens)
+            .bind(cost_micros)
+            .bind(&payload)
+            .execute(&mut *transaction)
+            .await
+            .map_err(StateError::Storage)?;
+        transaction.commit().await.map_err(StateError::Storage)?;
+        Ok(true)
     }
 
     pub async fn get_resource_usage_record(
@@ -327,6 +478,7 @@ impl ForgeStateStore {
     ) -> Result<(), StateError> {
         validate_key(owner)?;
         validate_key(key)?;
+        ensure_safe_payload(value)?;
         let bytes = serde_json::to_vec(value).map_err(StateError::Serialization)?;
         sqlx::query(
             "INSERT INTO canonical_state(owner, key, value, version) VALUES(?1, ?2, ?3, 1) \
@@ -378,6 +530,7 @@ impl ForgeStateStore {
     ) -> Result<bool, StateError> {
         validate_key(owner)?;
         validate_key(key)?;
+        ensure_safe_payload(value)?;
         let bytes = serde_json::to_vec(value).map_err(StateError::Serialization)?;
         let result = if let Some(expected_version) = expected_version {
             if expected_version == 0 || expected_version > i64::MAX as u64 {
@@ -407,21 +560,139 @@ impl ForgeStateStore {
         Ok(result.rows_affected() == 1)
     }
 
+    /// Atomically commits a command receipt with its optional canonical state transition and
+    /// durable events. A crash can therefore leave either the complete commit or none of it.
+    pub async fn commit_command(
+        &self,
+        identity: &str,
+        result: &Value,
+        state_transition: Option<&CanonicalStateTransition>,
+        events: &[StoredEvent],
+    ) -> Result<(), StateError> {
+        self.ensure_owner_healthy()?;
+        validate_identity(identity)?;
+        ensure_safe_payload(result)?;
+        let result_bytes = serde_json::to_vec(result).map_err(StateError::Serialization)?;
+        if result_bytes.len() > 4_194_304 || events.len() > 1_024 {
+            return Err(StateError::Integrity);
+        }
+
+        let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+        if let Some(transition) = state_transition {
+            validate_key(&transition.owner)?;
+            validate_key(&transition.key)?;
+            ensure_safe_payload(&transition.value)?;
+            let value = serde_json::to_vec(&transition.value).map_err(StateError::Serialization)?;
+            let updated = if let Some(expected_version) = transition.expected_version {
+                if expected_version == 0 || expected_version > i64::MAX as u64 {
+                    return Err(StateError::StateConflict);
+                }
+                sqlx::query("UPDATE canonical_state SET value=?3, version=version+1, updated_at=CURRENT_TIMESTAMP WHERE owner=?1 AND key=?2 AND version=?4")
+                    .bind(&transition.owner)
+                    .bind(&transition.key)
+                    .bind(value)
+                    .bind(expected_version as i64)
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?
+            } else {
+                sqlx::query("INSERT INTO canonical_state(owner, key, value, version) VALUES(?1, ?2, ?3, 1) ON CONFLICT(owner, key) DO NOTHING")
+                    .bind(&transition.owner)
+                    .bind(&transition.key)
+                    .bind(value)
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?
+            };
+            if updated.rows_affected() != 1 {
+                return Err(StateError::StateConflict);
+            }
+            #[cfg(test)]
+            crash_commit_process_at("state_cas");
+        }
+
+        #[cfg(test)]
+        let mut event_index = 0usize;
+        for event in events {
+            validate_key(&event.event_id)?;
+            validate_key(&event.contract_id)?;
+            ensure_safe_payload(&event.payload)?;
+            let payload = serde_json::to_vec(&event.payload).map_err(StateError::Serialization)?;
+            let inserted = sqlx::query("INSERT INTO event_outbox(event_id, contract_id, payload, delivery_state) VALUES(?1, ?2, ?3, 'pending') ON CONFLICT(event_id) DO NOTHING")
+                .bind(&event.event_id)
+                .bind(&event.contract_id)
+                .bind(&payload)
+                .execute(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?
+                .rows_affected();
+            if inserted == 0 {
+                let row =
+                    sqlx::query("SELECT contract_id, payload FROM event_outbox WHERE event_id=?1")
+                        .bind(&event.event_id)
+                        .fetch_optional(&mut *transaction)
+                        .await
+                        .map_err(StateError::Storage)?
+                        .ok_or(StateError::Integrity)?;
+                let contract_id: String =
+                    row.try_get("contract_id").map_err(StateError::Storage)?;
+                let prior_payload: Vec<u8> = row.try_get("payload").map_err(StateError::Storage)?;
+                if contract_id != event.contract_id || prior_payload != payload {
+                    return Err(StateError::StateConflict);
+                }
+            }
+            #[cfg(test)]
+            {
+                event_index += 1;
+                crash_commit_process_at(&format!("outbox_{event_index}"));
+            }
+        }
+
+        let update = sqlx::query("UPDATE command_intents SET state='committed', result=?2, error_code=NULL, owner_instance_id=NULL, lease_expires_at_ms=NULL, updated_at=CURRENT_TIMESTAMP WHERE identity=?1 AND state='in_flight' AND owner_instance_id=?3")
+            .bind(identity)
+            .bind(result_bytes)
+            .bind(&self.owner.instance_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(StateError::Storage)?;
+        if update.rows_affected() != 1 {
+            return Err(StateError::StateConflict);
+        }
+        #[cfg(test)]
+        crash_commit_process_at("receipt");
+        transaction.commit().await.map_err(StateError::Storage)?;
+        #[cfg(test)]
+        crash_commit_process_at("after_commit");
+        Ok(())
+    }
+
     pub async fn begin_idempotent(
         &self,
         identity: &str,
     ) -> Result<Option<IdempotencyRecord>, StateError> {
+        self.ensure_owner_healthy()?;
         validate_identity(identity)?;
+        let now = unix_time_ms()?;
+        let lease_expires_at = now.saturating_add(OWNER_LEASE_MS);
         let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
         let inserted = sqlx::query(
-            "INSERT INTO command_intents(identity, state) VALUES(?1, 'in_flight') ON CONFLICT(identity) DO NOTHING",
+            "INSERT INTO command_intents(identity, state, owner_instance_id, lease_expires_at_ms) VALUES(?1, 'in_flight', ?2, ?3) ON CONFLICT(identity) DO NOTHING",
         )
         .bind(identity)
+        .bind(&self.owner.instance_id)
+        .bind(lease_expires_at)
         .execute(&mut *transaction)
         .await
         .map_err(StateError::Storage)?
         .rows_affected();
         let existing = if inserted == 0 {
+            sqlx::query("UPDATE command_intents SET state='unknown_outcome', error_code='FORGE.COMMAND.RECOVERY_UNKNOWN', owner_instance_id=NULL, lease_expires_at_ms=NULL WHERE identity=?1 AND state='in_flight' AND (owner_instance_id IS NULL OR NOT EXISTS (SELECT 1 FROM store_instances AS owner WHERE owner.instance_id=command_intents.owner_instance_id AND owner.heartbeat_at_ms > ?2 - ?3 AND command_intents.lease_expires_at_ms > ?2))")
+                .bind(identity)
+                .bind(now)
+                .bind(OWNER_LEASE_MS)
+                .execute(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?;
             let row = sqlx::query(
                 "SELECT state, result, error_code FROM command_intents WHERE identity=?1",
             )
@@ -448,11 +719,14 @@ impl ForgeStateStore {
     }
 
     pub async fn retry_idempotent(&self, identity: &str) -> Result<bool, StateError> {
+        self.ensure_owner_healthy()?;
         validate_identity(identity)?;
         let update = sqlx::query(
-            "UPDATE command_intents SET state='in_flight', result=NULL, error_code=NULL, updated_at=CURRENT_TIMESTAMP WHERE identity=?1 AND state='failed_retryable'",
+            "UPDATE command_intents SET state='in_flight', result=NULL, error_code=NULL, owner_instance_id=?2, lease_expires_at_ms=?3, updated_at=CURRENT_TIMESTAMP WHERE identity=?1 AND state='failed_retryable'",
         )
         .bind(identity)
+        .bind(&self.owner.instance_id)
+        .bind(unix_time_ms()?.saturating_add(OWNER_LEASE_MS))
         .execute(&self.pool)
         .await
         .map_err(StateError::Storage)?;
@@ -465,6 +739,7 @@ impl ForgeStateStore {
         result: &Value,
     ) -> Result<(), StateError> {
         validate_identity(identity)?;
+        ensure_safe_payload(result)?;
         let bytes = serde_json::to_vec(result).map_err(StateError::Serialization)?;
         self.transition_idempotency(identity, IdempotencyState::Committed, Some(bytes), None)
             .await
@@ -490,9 +765,48 @@ impl ForgeStateStore {
             .await
     }
 
+    pub async fn consume_host_authorization_decision(
+        &self,
+        decision_id: &str,
+        claims_fingerprint: &str,
+        consumed_at_ms: u64,
+    ) -> Result<bool, StateError> {
+        validate_key(decision_id)?;
+        validate_digest(claims_fingerprint)?;
+        let consumed_at_ms = i64::try_from(consumed_at_ms).map_err(|_| StateError::Integrity)?;
+        let result = sqlx::query("INSERT INTO authorization_decisions(decision_id, claims_fingerprint, consumed_at_ms, revoked_at_ms) VALUES(?1, ?2, ?3, NULL) ON CONFLICT(decision_id) DO NOTHING")
+            .bind(decision_id)
+            .bind(claims_fingerprint)
+            .bind(consumed_at_ms)
+            .execute(&self.pool)
+            .await
+            .map_err(StateError::Storage)?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    pub async fn revoke_host_authorization_decision(
+        &self,
+        decision_id: &str,
+    ) -> Result<(), StateError> {
+        validate_key(decision_id)?;
+        let now = unix_time_ms()?;
+        let revocation_fingerprint = blake3::hash(format!("revoked:{decision_id}").as_bytes())
+            .to_hex()
+            .to_string();
+        sqlx::query("INSERT INTO authorization_decisions(decision_id, claims_fingerprint, consumed_at_ms, revoked_at_ms) VALUES(?1, ?2, NULL, ?3) ON CONFLICT(decision_id) DO UPDATE SET revoked_at_ms=COALESCE(authorization_decisions.revoked_at_ms, excluded.revoked_at_ms)")
+            .bind(decision_id)
+            .bind(revocation_fingerprint)
+            .bind(now)
+            .execute(&self.pool)
+            .await
+            .map_err(StateError::Storage)?;
+        Ok(())
+    }
+
     pub async fn enqueue_event(&self, event: &StoredEvent) -> Result<(), StateError> {
         validate_key(&event.event_id)?;
         validate_key(&event.contract_id)?;
+        ensure_safe_payload(&event.payload)?;
         let payload = serde_json::to_vec(&event.payload).map_err(StateError::Serialization)?;
         let inserted = sqlx::query("INSERT INTO event_outbox(event_id, contract_id, payload, delivery_state) VALUES(?1, ?2, ?3, 'pending') ON CONFLICT(event_id) DO NOTHING")
             .bind(&event.event_id)
@@ -553,6 +867,7 @@ impl ForgeStateStore {
         validate_key(&evidence.evidence_id)?;
         validate_key(&evidence.kind)?;
         validate_digest(&evidence.fingerprint)?;
+        ensure_safe_payload(&evidence.payload)?;
         let payload = serde_json::to_vec(&evidence.payload).map_err(StateError::Serialization)?;
         let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
         let row =
@@ -600,6 +915,7 @@ impl ForgeStateStore {
         validate_key(namespace)?;
         validate_key(key)?;
         validate_digest(fingerprint)?;
+        ensure_safe_payload(value)?;
         let bytes = serde_json::to_vec(value).map_err(StateError::Serialization)?;
         sqlx::query(
             "INSERT INTO disposable_cache(namespace, cache_key, fingerprint, value) VALUES(?1, ?2, ?3, ?4) \
@@ -819,6 +1135,48 @@ impl ForgeStateStore {
         if version != SCHEMA_VERSION {
             return Err(StateError::Integrity);
         }
+        let totals = sqlx::query(
+            "SELECT totals.pool, totals.tokens, totals.cost_micros, totals.record_count, \
+             COALESCE(SUM(usage.tokens), 0) AS ledger_tokens, \
+             COALESCE(SUM(usage.cost_micros), 0) AS ledger_cost_micros, \
+             COUNT(usage.usage_id) AS ledger_count \
+             FROM resource_usage_totals AS totals \
+             LEFT JOIN resource_usage AS usage ON usage.pool=totals.pool \
+             GROUP BY totals.pool, totals.tokens, totals.cost_micros, totals.record_count",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(StateError::Storage)?;
+        if totals.len() != 2 {
+            return Err(StateError::Integrity);
+        }
+        let mut seen_pools = BTreeSet::new();
+        let mut total_records = 0_i64;
+        for row in totals {
+            let pool: String = row.try_get("pool").map_err(StateError::Storage)?;
+            let tokens: i64 = row.try_get("tokens").map_err(StateError::Storage)?;
+            let cost_micros: i64 = row.try_get("cost_micros").map_err(StateError::Storage)?;
+            let record_count: i64 = row.try_get("record_count").map_err(StateError::Storage)?;
+            let ledger_tokens: i64 = row.try_get("ledger_tokens").map_err(StateError::Storage)?;
+            let ledger_cost_micros: i64 = row
+                .try_get("ledger_cost_micros")
+                .map_err(StateError::Storage)?;
+            let ledger_count: i64 = row.try_get("ledger_count").map_err(StateError::Storage)?;
+            if !matches!(pool.as_str(), "ordinary" | "survival")
+                || !seen_pools.insert(pool)
+                || tokens != ledger_tokens
+                || cost_micros != ledger_cost_micros
+                || record_count != ledger_count
+            {
+                return Err(StateError::Integrity);
+            }
+            total_records = total_records
+                .checked_add(record_count)
+                .ok_or(StateError::Integrity)?;
+        }
+        if total_records > 100_000 {
+            return Err(StateError::Integrity);
+        }
         Ok(())
     }
 
@@ -859,6 +1217,46 @@ impl ForgeStateStore {
                 .map_err(StateError::Storage)?;
             transaction.commit().await.map_err(StateError::Storage)?;
         }
+        if current < 3 {
+            let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+            let columns = sqlx::query("PRAGMA table_info(command_intents)")
+                .fetch_all(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?;
+            let has_column = |name: &str| -> Result<bool, StateError> {
+                columns
+                    .iter()
+                    .map(|row| {
+                        row.try_get::<String, _>("name")
+                            .map_err(StateError::Storage)
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(|names| names.iter().any(|column| column == name))
+            };
+            if !has_column("owner_instance_id")? {
+                sqlx::query(CORRECTION_MIGRATIONS[0])
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?;
+            }
+            if !has_column("lease_expires_at_ms")? {
+                sqlx::query(CORRECTION_MIGRATIONS[1])
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?;
+            }
+            for statement in CORRECTION_MIGRATIONS.iter().skip(2).copied() {
+                sqlx::query(statement)
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?;
+            }
+            sqlx::query("PRAGMA user_version = 3")
+                .execute(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?;
+            transaction.commit().await.map_err(StateError::Storage)?;
+        }
         Ok(())
     }
 
@@ -869,13 +1267,15 @@ impl ForgeStateStore {
         result: Option<Vec<u8>>,
         error_code: Option<String>,
     ) -> Result<(), StateError> {
+        self.ensure_owner_healthy()?;
         let update = sqlx::query(
-            "UPDATE command_intents SET state=?2, result=?3, error_code=?4, updated_at=CURRENT_TIMESTAMP WHERE identity=?1 AND state='in_flight'",
+            "UPDATE command_intents SET state=?2, result=?3, error_code=?4, owner_instance_id=NULL, lease_expires_at_ms=NULL, updated_at=CURRENT_TIMESTAMP WHERE identity=?1 AND state='in_flight' AND owner_instance_id=?5",
         )
         .bind(identity)
         .bind(state.as_db())
         .bind(result)
         .bind(error_code)
+        .bind(&self.owner.instance_id)
         .execute(&self.pool)
         .await
         .map_err(StateError::Storage)?;
@@ -886,12 +1286,130 @@ impl ForgeStateStore {
     }
 
     async fn mark_interrupted_commands_unknown(&self) -> Result<(), StateError> {
-        sqlx::query("UPDATE command_intents SET state='unknown_outcome', error_code='FORGE.COMMAND.RECOVERY_UNKNOWN' WHERE state='in_flight'")
+        let now = unix_time_ms()?;
+        sqlx::query("UPDATE command_intents SET state='unknown_outcome', error_code='FORGE.COMMAND.RECOVERY_UNKNOWN', owner_instance_id=NULL, lease_expires_at_ms=NULL WHERE state='in_flight' AND (owner_instance_id IS NULL OR NOT EXISTS (SELECT 1 FROM store_instances AS owner WHERE owner.instance_id=command_intents.owner_instance_id AND owner.heartbeat_at_ms > ?1 - ?2 AND command_intents.lease_expires_at_ms > ?1))")
+            .bind(now)
+            .bind(OWNER_LEASE_MS)
+            .execute(&self.pool)
+            .await
+            .map_err(StateError::Storage)?;
+        sqlx::query("DELETE FROM store_instances WHERE heartbeat_at_ms <= ?1 - ?2")
+            .bind(now)
+            .bind(OWNER_LEASE_MS)
             .execute(&self.pool)
             .await
             .map_err(StateError::Storage)?;
         Ok(())
     }
+}
+
+fn unix_time_ms() -> Result<i64, StateError> {
+    let milliseconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| StateError::Integrity)?
+        .as_millis();
+    i64::try_from(milliseconds).map_err(|_| StateError::Integrity)
+}
+
+#[cfg(test)]
+fn crash_commit_process_at(boundary: &str) {
+    if std::env::var("FORGE_TEST_COMMIT_CRASH_BOUNDARY")
+        .ok()
+        .as_deref()
+        == Some(boundary)
+    {
+        std::process::exit(86);
+    }
+}
+
+fn new_store_instance_id() -> String {
+    let sequence = STORE_INSTANCE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let material = format!(
+        "{}:{}:{}",
+        std::process::id(),
+        unix_time_ms().unwrap_or_default(),
+        sequence
+    );
+    format!("store.{}", blake3::hash(material.as_bytes()).to_hex())
+}
+
+fn ensure_safe_payload(value: &Value) -> Result<(), StateError> {
+    let mut pending = vec![(value, 0_usize)];
+    let mut visited = 0_usize;
+    while let Some((current, depth)) = pending.pop() {
+        visited += 1;
+        if visited > 100_000 || depth > 64 {
+            return Err(StateError::SensitivePayload);
+        }
+        match current {
+            Value::Object(fields) => {
+                for (name, value) in fields {
+                    if secret_bearing_field(name) {
+                        return Err(StateError::SensitivePayload);
+                    }
+                    pending.push((value, depth + 1));
+                }
+            }
+            Value::Array(items) => {
+                pending.extend(items.iter().map(|item| (item, depth + 1)));
+            }
+            Value::String(value) if looks_like_credential(value) => {
+                return Err(StateError::SensitivePayload);
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_payload_for_persistence(value: &Value) -> Result<(), StateError> {
+    ensure_safe_payload(value)
+}
+
+fn secret_bearing_field(name: &str) -> bool {
+    let normalized = name
+        .bytes()
+        .filter(u8::is_ascii_alphanumeric)
+        .map(char::from)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    [
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "apikey",
+        "privatekey",
+        "credential",
+        "cookie",
+        "authorization",
+    ]
+    .iter()
+    .any(|suffix| normalized.ends_with(suffix))
+}
+
+fn looks_like_credential(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("bearer ")
+        || lower.contains("-----begin ") && lower.contains("private key-----")
+    {
+        return true;
+    }
+    ["ghp_", "github_pat_", "gho_", "ghu_", "ghs_", "ghr_", "sk-"]
+        .iter()
+        .any(|marker| {
+            lower.find(marker).is_some_and(|index| {
+                lower[index + marker.len()..]
+                    .bytes()
+                    .take_while(u8::is_ascii_alphanumeric)
+                    .count()
+                    >= 16
+            })
+        })
+        || value.starts_with("AKIA")
+            && value.get(4..20).is_some_and(|suffix| {
+                suffix.len() == 16 && suffix.bytes().all(|b| b.is_ascii_alphanumeric())
+            })
 }
 
 fn validate_key(value: &str) -> Result<(), StateError> {
@@ -1053,6 +1571,118 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn credential_canary_never_reaches_canonical_state_receipts_outbox_cache_or_replay() {
+        let root = tempfile::tempdir().expect("temp directory");
+        let store = ForgeStateStore::open(root.path()).await.expect("store");
+        let canary = "ghp_C03CANARY0123456789ABCDEF";
+        let bearer = format!("Bearer {canary}");
+        let payload = json!({"message": bearer});
+        for field in [
+            "github_token",
+            "openai_api_key",
+            "oauth_secret",
+            "ssh_private_key",
+        ] {
+            let keyed_secret = json!({field: "opaque-reference-value"});
+            assert!(matches!(
+                validate_payload_for_persistence(&keyed_secret),
+                Err(StateError::SensitivePayload)
+            ));
+        }
+
+        let canonical_error = store
+            .put_canonical("project", "private", &payload)
+            .await
+            .expect_err("credential-like state is rejected");
+        assert!(matches!(canonical_error, StateError::SensitivePayload));
+        assert!(!canonical_error.to_string().contains(canary));
+        assert!(matches!(
+            store
+                .compare_and_set_canonical("project", "private-cas", None, &payload)
+                .await,
+            Err(StateError::SensitivePayload)
+        ));
+
+        let receipt_identity = digest("secret-canary-receipt");
+        assert!(
+            store
+                .begin_idempotent(&receipt_identity)
+                .await
+                .expect("begin command")
+                .is_none()
+        );
+        assert!(matches!(
+            store
+                .commit_command(&receipt_identity, &payload, None, &[])
+                .await,
+            Err(StateError::SensitivePayload)
+        ));
+        let receipt = store
+            .begin_idempotent(&receipt_identity)
+            .await
+            .expect("read command intent")
+            .expect("in-flight intent remains without a receipt");
+        assert_eq!(receipt.state, IdempotencyState::InFlight);
+        assert_eq!(receipt.result, None);
+
+        assert!(matches!(
+            store
+                .enqueue_event(&StoredEvent {
+                    event_id: "evt.secret-canary".into(),
+                    contract_id: "forge.event.private".into(),
+                    payload: payload.clone(),
+                })
+                .await,
+            Err(StateError::SensitivePayload)
+        ));
+        assert!(matches!(
+            store
+                .record_evidence(&EvidenceRecord {
+                    evidence_id: "evidence.secret-canary".into(),
+                    kind: "security".into(),
+                    fingerprint: digest("secret-evidence"),
+                    payload: payload.clone(),
+                })
+                .await,
+            Err(StateError::SensitivePayload)
+        ));
+        assert!(
+            store
+                .pending_events(10)
+                .await
+                .expect("event replay")
+                .is_empty()
+        );
+
+        assert!(matches!(
+            store
+                .put_cache("test", "secret-canary", &digest("cache-key"), &payload)
+                .await,
+            Err(StateError::SensitivePayload)
+        ));
+        assert_eq!(
+            store
+                .get_cache("test", "secret-canary", &digest("cache-key"))
+                .await
+                .expect("cache lookup"),
+            None
+        );
+
+        for entry in fs::read_dir(root.path()).expect("list state files") {
+            let path = entry.expect("state file").path();
+            if path.is_file() {
+                let bytes = fs::read(path).expect("read state file");
+                assert!(
+                    !bytes
+                        .windows(canary.len())
+                        .any(|window| window == canary.as_bytes()),
+                    "credential canary must not be persisted"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn canonical_state_survives_while_disposable_cache_can_be_cleared() {
         let root = tempfile::tempdir().expect("temp directory");
         let store = ForgeStateStore::open(root.path())
@@ -1092,7 +1722,7 @@ mod tests {
         let record = usage_record("request-1");
         let limit = usage_limit(100, 500);
 
-        assert_eq!(store.schema_version(), 2);
+        assert_eq!(store.schema_version(), 3);
         assert!(
             store
                 .record_resource_usage(&record, &limit)
@@ -1194,6 +1824,436 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resource_ledger_limit_is_shared_across_store_instances() {
+        let root = tempfile::tempdir().expect("temp directory");
+        let first = ForgeStateStore::open(root.path())
+            .await
+            .expect("first store");
+        let second = ForgeStateStore::open(root.path())
+            .await
+            .expect("second store");
+        sqlx::query("UPDATE resource_usage_totals SET record_count=99999 WHERE pool='ordinary'")
+            .execute(&first.pool)
+            .await
+            .expect("arrange shared ledger near capacity");
+
+        let a = usage_record("global-cap-a");
+        let b = usage_record("global-cap-b");
+        let limit = usage_limit(100, 500);
+        let (a_result, b_result) = tokio::join!(
+            first.record_resource_usage(&a, &limit),
+            second.record_resource_usage(&b, &limit)
+        );
+        let results = [a_result, b_result];
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| matches!(result, Ok(true)))
+                .count(),
+            1
+        );
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| matches!(result, Err(StateError::ResourceLedgerLimit)))
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn opening_a_second_store_preserves_live_intents_and_recovers_stale_owners() {
+        let live_root = tempfile::tempdir().expect("live temp directory");
+        let live_owner = ForgeStateStore::open(live_root.path())
+            .await
+            .expect("first live store");
+        let identity = digest("live-intent");
+        assert!(
+            live_owner
+                .begin_idempotent(&identity)
+                .await
+                .expect("begin live intent")
+                .is_none()
+        );
+
+        let concurrent_store = ForgeStateStore::open(live_root.path())
+            .await
+            .expect("second live store");
+        assert_eq!(
+            concurrent_store
+                .begin_idempotent(&identity)
+                .await
+                .expect("live intent remains visible")
+                .expect("existing intent"),
+            IdempotencyRecord {
+                state: IdempotencyState::InFlight,
+                result: None,
+                error_code: None,
+            }
+        );
+
+        let stale_root = tempfile::tempdir().expect("stale temp directory");
+        let stale_owner = ForgeStateStore::open(stale_root.path())
+            .await
+            .expect("initial store");
+        let stale_identity = digest("stale-intent");
+        assert!(
+            stale_owner
+                .begin_idempotent(&stale_identity)
+                .await
+                .expect("begin stale intent")
+                .is_none()
+        );
+        sqlx::query("UPDATE store_instances SET heartbeat_at_ms=0 WHERE instance_id=?1")
+            .bind(&stale_owner.owner.instance_id)
+            .execute(&stale_owner.pool)
+            .await
+            .expect("simulate stale owner heartbeat");
+
+        let recovering_store = ForgeStateStore::open(stale_root.path())
+            .await
+            .expect("recovery store");
+        assert_eq!(
+            recovering_store
+                .begin_idempotent(&stale_identity)
+                .await
+                .expect("stale intent is readable")
+                .expect("recovered intent")
+                .state,
+            IdempotencyState::UnknownOutcome
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_store_instances_admit_one_intent_owner_and_one_durable_effect() {
+        let root = tempfile::tempdir().expect("concurrent command state root");
+        let first = ForgeStateStore::open(root.path())
+            .await
+            .expect("first store opens");
+        let second = ForgeStateStore::open(root.path())
+            .await
+            .expect("second store opens");
+        first
+            .put_canonical("project", "setting", &json!({"value": 1}))
+            .await
+            .expect("initial canonical state");
+        let identity = digest("shared-concurrent-intent");
+        let (first_admission, second_admission) = tokio::join!(
+            first.begin_idempotent(&identity),
+            second.begin_idempotent(&identity)
+        );
+        let first_admission = first_admission.expect("first admission result");
+        let second_admission = second_admission.expect("second admission result");
+        assert_ne!(
+            first_admission.is_none(),
+            second_admission.is_none(),
+            "exactly one store instance must own the new intent"
+        );
+        let (owner, duplicate) = if first_admission.is_none() {
+            (&first, &second)
+        } else {
+            (&second, &first)
+        };
+        owner
+            .commit_command(
+                &identity,
+                &json!({"receipt": "committed"}),
+                Some(&CanonicalStateTransition {
+                    owner: "project".into(),
+                    key: "setting".into(),
+                    expected_version: Some(1),
+                    value: json!({"value": 2}),
+                }),
+                &[StoredEvent {
+                    event_id: "evt.concurrent.once".into(),
+                    contract_id: "forge.event.changed".into(),
+                    payload: json!({"value": 2}),
+                }],
+            )
+            .await
+            .expect("current owner commits once");
+        assert!(matches!(
+            duplicate
+                .commit_command(
+                    &identity,
+                    &json!({"receipt": "duplicate"}),
+                    Some(&CanonicalStateTransition {
+                        owner: "project".into(),
+                        key: "setting".into(),
+                        expected_version: Some(1),
+                        value: json!({"value": 3}),
+                    }),
+                    &[StoredEvent {
+                        event_id: "evt.concurrent.once".into(),
+                        contract_id: "forge.event.changed".into(),
+                        payload: json!({"value": 3}),
+                    }],
+                )
+                .await,
+            Err(StateError::StateConflict)
+        ));
+        assert_eq!(
+            owner
+                .get_canonical("project", "setting")
+                .await
+                .expect("committed canonical state"),
+            Some(json!({"value": 2}))
+        );
+        assert_eq!(
+            owner
+                .pending_events(10)
+                .await
+                .expect("one outbox fact")
+                .len(),
+            1
+        );
+        assert_eq!(
+            duplicate
+                .begin_idempotent(&identity)
+                .await
+                .expect("read committed identity")
+                .expect("one durable receipt")
+                .state,
+            IdempotencyState::Committed
+        );
+    }
+
+    #[tokio::test]
+    async fn command_state_outbox_and_receipt_commit_atomically() {
+        let root = tempfile::tempdir().expect("temp directory");
+        let store = ForgeStateStore::open(root.path())
+            .await
+            .expect("store opens");
+        store
+            .put_canonical("project", "setting", &json!({"value": 1}))
+            .await
+            .expect("seed canonical state");
+        let identity = digest("command-atomic");
+        assert!(
+            store
+                .begin_idempotent(&identity)
+                .await
+                .expect("begin command")
+                .is_none()
+        );
+        store
+            .enqueue_event(&StoredEvent {
+                event_id: "evt.conflict".into(),
+                contract_id: "forge.event.changed".into(),
+                payload: json!({"value": "prior"}),
+            })
+            .await
+            .expect("seed conflicting outbox event");
+
+        let conflicting = StoredEvent {
+            event_id: "evt.conflict".into(),
+            contract_id: "forge.event.changed".into(),
+            payload: json!({"value": "new"}),
+        };
+        assert!(matches!(
+            store
+                .commit_command(
+                    &identity,
+                    &json!({"receipt": "new"}),
+                    Some(&CanonicalStateTransition {
+                        owner: "project".into(),
+                        key: "setting".into(),
+                        expected_version: Some(1),
+                        value: json!({"value": 2}),
+                    }),
+                    &[conflicting],
+                )
+                .await,
+            Err(StateError::StateConflict)
+        ));
+        assert_eq!(
+            store
+                .get_canonical("project", "setting")
+                .await
+                .expect("state"),
+            Some(json!({"value": 1}))
+        );
+        assert_eq!(store.pending_events(10).await.expect("outbox").len(), 1);
+        assert_eq!(
+            store
+                .begin_idempotent(&identity)
+                .await
+                .expect("receipt remains in flight")
+                .expect("in-flight receipt")
+                .state,
+            IdempotencyState::InFlight
+        );
+
+        store
+            .commit_command(
+                &identity,
+                &json!({"receipt": "committed"}),
+                Some(&CanonicalStateTransition {
+                    owner: "project".into(),
+                    key: "setting".into(),
+                    expected_version: Some(1),
+                    value: json!({"value": 2}),
+                }),
+                &[StoredEvent {
+                    event_id: "evt.atomic".into(),
+                    contract_id: "forge.event.changed".into(),
+                    payload: json!({"value": 2}),
+                }],
+            )
+            .await
+            .expect("atomic command commit");
+        assert_eq!(
+            store
+                .get_canonical("project", "setting")
+                .await
+                .expect("state"),
+            Some(json!({"value": 2}))
+        );
+        assert_eq!(store.pending_events(10).await.expect("outbox").len(), 2);
+        assert_eq!(
+            store
+                .begin_idempotent(&identity)
+                .await
+                .expect("committed receipt")
+                .expect("receipt record")
+                .state,
+            IdempotencyState::Committed
+        );
+    }
+
+    #[tokio::test]
+    async fn command_commit_process_crashes_recover_atomically_at_each_write_boundary() {
+        const IDENTITY: &str = "b";
+        let identity = blake3::hash(IDENTITY.as_bytes()).to_hex().to_string();
+        if let Ok(root) = std::env::var("FORGE_TEST_COMMIT_CRASH_ROOT") {
+            let store = ForgeStateStore::open(root)
+                .await
+                .expect("child crash store opens");
+            store
+                .put_canonical("project", "setting", &json!({"value": 1}))
+                .await
+                .expect("child seeds state");
+            assert!(
+                store
+                    .begin_idempotent(&identity)
+                    .await
+                    .expect("child admits intent")
+                    .is_none()
+            );
+            store
+                .commit_command(
+                    &identity,
+                    &json!({"receipt": "committed"}),
+                    Some(&CanonicalStateTransition {
+                        owner: "project".into(),
+                        key: "setting".into(),
+                        expected_version: Some(1),
+                        value: json!({"value": 2}),
+                    }),
+                    &[
+                        StoredEvent {
+                            event_id: "evt.crash.one".into(),
+                            contract_id: "forge.event.changed".into(),
+                            payload: json!({"sequence": 1}),
+                        },
+                        StoredEvent {
+                            event_id: "evt.crash.two".into(),
+                            contract_id: "forge.event.changed".into(),
+                            payload: json!({"sequence": 2}),
+                        },
+                    ],
+                )
+                .await
+                .expect("child command transaction completes before requested boundary exit");
+            panic!("requested transaction boundary did not terminate the child process");
+        }
+
+        for boundary in [
+            "state_cas",
+            "outbox_1",
+            "outbox_2",
+            "receipt",
+            "after_commit",
+        ] {
+            let root = tempfile::tempdir().expect("process-crash state root");
+            let child = std::process::Command::new(
+                std::env::current_exe().expect("current test executable"),
+            )
+            .arg("command_commit_process_crashes_recover_atomically_at_each_write_boundary")
+            .arg("--nocapture")
+            .env("FORGE_TEST_COMMIT_CRASH_ROOT", root.path())
+            .env("FORGE_TEST_COMMIT_CRASH_BOUNDARY", boundary)
+            .output()
+            .expect("crash child process starts");
+            assert_eq!(
+                child.status.code(),
+                Some(86),
+                "child did not exit at requested boundary {boundary}: {}",
+                String::from_utf8_lossy(&child.stderr)
+            );
+
+            let store = ForgeStateStore::open(root.path())
+                .await
+                .expect("reopen after abrupt process exit");
+            let committed = boundary == "after_commit";
+            assert_eq!(
+                store
+                    .get_canonical("project", "setting")
+                    .await
+                    .expect("canonical state after recovery"),
+                Some(if committed {
+                    json!({"value": 2})
+                } else {
+                    json!({"value": 1})
+                }),
+                "state diverged at {boundary}"
+            );
+            assert_eq!(
+                store
+                    .pending_events(10)
+                    .await
+                    .expect("outbox after recovery")
+                    .len(),
+                if committed { 2 } else { 0 },
+                "outbox diverged at {boundary}"
+            );
+
+            if committed {
+                assert_eq!(
+                    store
+                        .begin_idempotent(&identity)
+                        .await
+                        .expect("committed receipt lookup")
+                        .expect("committed receipt")
+                        .state,
+                    IdempotencyState::Committed
+                );
+            } else {
+                sqlx::query("UPDATE store_instances SET heartbeat_at_ms=0 WHERE instance_id != ?1")
+                    .bind(&store.owner.instance_id)
+                    .execute(&store.pool)
+                    .await
+                    .expect("age crashed owner heartbeat");
+                sqlx::query("UPDATE command_intents SET lease_expires_at_ms=0 WHERE identity=?1")
+                    .bind(&identity)
+                    .execute(&store.pool)
+                    .await
+                    .expect("expire crashed command lease");
+                assert_eq!(
+                    store
+                        .begin_idempotent(&identity)
+                        .await
+                        .expect("stale outcome lookup")
+                        .expect("stale outcome")
+                        .state,
+                    IdempotencyState::UnknownOutcome,
+                    "pre-commit crash at {boundary} must remain unreplayed until reconciliation"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn resource_usage_schema_migrates_from_v1_without_recreating_canonical_state() {
         let root = tempfile::tempdir().expect("temp directory");
         let store = ForgeStateStore::open(root.path())
@@ -1214,7 +2274,7 @@ mod tests {
 
         store.migrate().await.expect("v1 to v2 migration");
         store.integrity_check().await.expect("migrated integrity");
-        assert_eq!(store.schema_version(), 2);
+        assert_eq!(store.schema_version(), 3);
         assert_eq!(
             store
                 .get_canonical("kernel", "migration.marker")

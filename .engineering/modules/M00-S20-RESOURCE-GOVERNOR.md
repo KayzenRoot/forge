@@ -175,3 +175,10 @@ Forbidden:
 
 ## Acceptance criteria
 S20 is accepted when Forge can reserve, delegate, account, borrow, revoke and protect multi-dimensional resources with explicit enforcement capability, survival headroom and hierarchical token/cost budgets, while coordinating with S13 without conflating scheduling with resource ownership.
+
+## C03 shared ledger ceiling
+
+The v3 durable ledger keeps per-pool token, cost, and record-count aggregates in S08. Each insert
+reserves against both the pool and one shared 100,000-record ceiling inside `BEGIN IMMEDIATE`, so
+independent stores/processes cannot each admit a separate local allowance. Integrity checks
+reconcile aggregates against ledger contents; duplicate identical usage IDs remain no-ops.

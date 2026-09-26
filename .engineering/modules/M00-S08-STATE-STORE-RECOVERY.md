@@ -164,3 +164,18 @@ HIVE remains owner of its own knowledge/memory stores. Core and IRIS own their d
 
 ## Acceptance criteria
 S08 is accepted when Forge has an explicit state taxonomy, local transactional authority, module ownership, crash-consistency/recovery semantics, cache disposability, evidence integrity, migration discipline and a storage abstraction that preserves Sovereign Standalone Mode without pretending SQLite must solve every future distributed problem.
+
+## C03 durable command commit boundary
+
+The candidate schema is v3. It records command owner/lease state, authorization-decision replay and
+revocation state, and incremental shared resource-ledger totals. A durable command's canonical
+compare-and-set transition, outbox events, and idempotency receipt commit in one SQLite transaction.
+The event bus is notified only after commit; pending outbox rows are the recovery source. An
+`in_flight` intent remains live while its owner heartbeat and lease are current. A missing/stale
+owner or expired lease becomes `unknown_outcome`, which must be reconciled and is never blindly
+retried. Opening a second store does not invalidate another live owner's intent.
+
+Ordinary persisted payloads, including evidence, command results, canonical state, durable events,
+resource-use metadata, and cache values, reject secret-bearing field names and credential-like
+strings before serialization. Rejection messages do not echo payload values. Secrets belong in
+secure references, not ordinary rows or their backups.

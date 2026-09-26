@@ -38,8 +38,7 @@ struct LaneQueue<T> {
     capacity: usize,
     per_owner_capacity: usize,
     queues: BTreeMap<String, VecDeque<ScheduledWork<T>>>,
-    owners: Vec<String>,
-    next_owner: usize,
+    owners: VecDeque<String>,
     total: usize,
 }
 
@@ -68,8 +67,7 @@ impl<T> FairScheduler<T> {
                     capacity,
                     per_owner_capacity,
                     queues: BTreeMap::new(),
-                    owners: Vec::new(),
-                    next_owner: 0,
+                    owners: VecDeque::new(),
                     total: 0,
                 })),
             );
@@ -105,7 +103,7 @@ impl<T> FairScheduler<T> {
             return Err(SchedulerError::OwnerLimit);
         }
         if owner_len == 0 {
-            queue.owners.push(owner.clone());
+            queue.owners.push_back(owner.clone());
         }
         queue
             .queues
@@ -122,8 +120,7 @@ impl<T> FairScheduler<T> {
         if queue.owners.is_empty() {
             return None;
         }
-        let index = queue.next_owner % queue.owners.len();
-        let owner = queue.owners[index].clone();
+        let owner = queue.owners.pop_front()?;
         let (work, became_empty) = {
             let owner_queue = queue.queues.get_mut(&owner)?;
             let work = owner_queue.pop_front()?;
@@ -132,14 +129,8 @@ impl<T> FairScheduler<T> {
         queue.total = queue.total.saturating_sub(1);
         if became_empty {
             queue.queues.remove(&owner);
-            queue.owners.remove(index);
-            if !queue.owners.is_empty() {
-                queue.next_owner %= queue.owners.len();
-            } else {
-                queue.next_owner = 0;
-            }
         } else {
-            queue.next_owner = (index + 1) % queue.owners.len();
+            queue.owners.push_back(owner);
         }
         Some(work)
     }
@@ -207,6 +198,23 @@ mod tests {
             scheduler.next(Lane::Interactive).map(|work| work.value),
             Some(3)
         );
+    }
+
+    #[test]
+    fn round_robin_owner_membership_uses_constant_time_rotation() {
+        let scheduler = FairScheduler::new([(Lane::Normal, 2_000, 1)]).expect("valid lane");
+        for index in 0..1_000 {
+            scheduler
+                .enqueue(format!("owner.{index}"), Lane::Normal, index)
+                .expect("enqueue owner");
+        }
+        for expected in 0..1_000 {
+            assert_eq!(
+                scheduler.next(Lane::Normal).map(|work| work.value),
+                Some(expected)
+            );
+        }
+        assert_eq!(scheduler.queue_depth(Lane::Normal), 0);
     }
 
     #[test]

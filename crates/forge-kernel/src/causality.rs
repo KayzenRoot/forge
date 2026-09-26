@@ -102,6 +102,7 @@ pub struct CausalityGraph {
     epoch: u64,
     nodes: BTreeMap<String, GraphNode>,
     edges: BTreeSet<GraphEdgeKey>,
+    proof_coverage_verified: bool,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -118,7 +119,8 @@ pub struct GraphSnapshot {
     pub epoch: u64,
     pub digest: String,
     nodes: BTreeMap<String, GraphNode>,
-    edges: Vec<GraphEdge>,
+    outgoing: BTreeMap<String, Vec<GraphEdge>>,
+    proof_coverage_verified: bool,
 }
 
 impl Default for CausalityGraph {
@@ -133,7 +135,15 @@ impl CausalityGraph {
             epoch: 0,
             nodes: BTreeMap::new(),
             edges: BTreeSet::new(),
+            proof_coverage_verified: false,
         }
+    }
+
+    /// Only a trusted in-crate graph loader may assert that required seeds and edges are complete.
+    #[cfg(test)]
+    pub(crate) fn mark_proof_coverage_verified(&mut self) {
+        self.proof_coverage_verified = true;
+        self.epoch = self.epoch.saturating_add(1);
     }
 
     pub fn add_node(&mut self, node: GraphNode) -> Result<(), GraphError> {
@@ -178,23 +188,41 @@ impl CausalityGraph {
                 confidence: edge.confidence,
             })
             .collect::<Vec<_>>();
-        let serialized = serde_json::to_vec(&(&self.nodes, &edges))
+        let serialized = serde_json::to_vec(&(&self.nodes, &edges, self.proof_coverage_verified))
             .map_err(|_| GraphError::SnapshotSerialization)?;
+        let mut outgoing: BTreeMap<String, Vec<GraphEdge>> = BTreeMap::new();
+        for edge in &edges {
+            outgoing
+                .entry(edge.from.clone())
+                .or_default()
+                .push(edge.clone());
+        }
         Ok(GraphSnapshot {
             epoch: self.epoch,
             digest: blake3::hash(&serialized).to_hex().to_string(),
             nodes: self.nodes.clone(),
-            edges,
+            outgoing,
+            proof_coverage_verified: self.proof_coverage_verified,
         })
     }
 }
 
 impl GraphSnapshot {
+    pub fn proof_coverage_verified(&self) -> bool {
+        self.proof_coverage_verified
+    }
+
+    pub fn node_kind(&self, id: &str) -> Option<NodeKind> {
+        self.nodes.get(id).map(|node| node.kind)
+    }
+
     pub fn compute_change_cone(&self, seeds: &[String], kind: ChangeKind) -> ChangeCone {
         let mut impacted = BTreeSet::new();
         let mut visited = BTreeSet::new();
         let mut pending = VecDeque::new();
-        let mut conservative = kind == ChangeKind::Unknown;
+        let mut conservative = kind == ChangeKind::Unknown
+            || seeds.is_empty()
+            || seeds.iter().any(|seed| !self.nodes.contains_key(seed));
         let mut seed_nodes = BTreeSet::new();
         for seed in seeds.iter().filter(|seed| self.nodes.contains_key(*seed)) {
             visited.insert(seed.clone());
@@ -202,7 +230,7 @@ impl GraphSnapshot {
             pending.push_back(seed.clone());
         }
         while let Some(current) = pending.pop_front() {
-            for edge in self.edges.iter().filter(|edge| edge.from == current) {
+            for edge in self.outgoing.get(&current).into_iter().flatten() {
                 let low_confidence = edge.confidence < EdgeConfidence::Observed;
                 if low_confidence && visited.contains(&current) {
                     conservative = true;
@@ -218,6 +246,14 @@ impl GraphSnapshot {
                 }
             }
         }
+        if conservative {
+            impacted.extend(
+                self.nodes
+                    .keys()
+                    .filter(|node| !seed_nodes.contains(*node))
+                    .cloned(),
+            );
+        }
         let proof_nodes_to_invalidate = impacted
             .iter()
             .filter(|node| {
@@ -232,11 +268,7 @@ impl GraphSnapshot {
             .collect();
         ChangeCone {
             graph_epoch: self.epoch,
-            seeds: seeds
-                .iter()
-                .filter(|seed| self.nodes.contains_key(*seed))
-                .cloned()
-                .collect(),
+            seeds: seed_nodes.into_iter().collect(),
             impacted: impacted.into_iter().collect(),
             proof_nodes_to_invalidate,
             conservative,
@@ -354,5 +386,35 @@ mod tests {
         assert!(cone.conservative);
         assert_eq!(cone.impacted, vec!["b", "evidence"]);
         assert_eq!(cone.proof_nodes_to_invalidate, vec!["evidence"]);
+    }
+
+    #[test]
+    fn missing_or_empty_seeds_fail_closed_to_the_full_graph() {
+        let mut graph = CausalityGraph::new();
+        for (id, kind) in [
+            ("src/a", NodeKind::Module),
+            ("test/a", NodeKind::Test),
+            ("evidence/a", NodeKind::Evidence),
+        ] {
+            graph
+                .add_node(GraphNode {
+                    id: id.into(),
+                    kind,
+                })
+                .expect("node");
+        }
+        let snapshot = graph.snapshot().expect("snapshot");
+        let missing =
+            snapshot.compute_change_cone(&["src/not-in-graph".into()], ChangeKind::Implementation);
+        assert!(missing.conservative);
+        assert_eq!(missing.impacted, vec!["evidence/a", "src/a", "test/a"]);
+        assert_eq!(
+            missing.proof_nodes_to_invalidate,
+            vec!["evidence/a", "test/a"]
+        );
+
+        let empty = snapshot.compute_change_cone(&[], ChangeKind::Implementation);
+        assert!(empty.conservative);
+        assert_eq!(empty.impacted, vec!["evidence/a", "src/a", "test/a"]);
     }
 }

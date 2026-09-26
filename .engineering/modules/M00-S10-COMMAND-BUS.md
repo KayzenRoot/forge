@@ -107,6 +107,17 @@ Cancellation is not rollback.
 ## Authorization
 Permission checks occur before capability resolution where possible to avoid leaking provider/resource information. Command handlers declare required permissions via FCF. Modules cannot invoke privileged commands merely because they share a process.
 
+The caller supplies no authority boolean or self-asserted permission list. The trusted host issues a
+keyed decision binding decision ID, subject, action/contract, scope, resource, run, permissions,
+and validity interval. The command bus verifies the decision before dispatch, limits its lifetime
+to five minutes, and atomically consumes its ID in S08; a durable revocation marker rejects a
+revoked decision. Missing verifier configuration, malformed/tampered claims, future or expired
+validity, replay, revocation, or any subject/action/scope/resource/run mismatch fails closed.
+Signing keys remain in the trusted host configuration and are not exposed to request handlers.
+
+Secret-class requests are rejected before durable idempotency recording. Sensitive results retain
+their audit fingerprint and commit metadata but persist no raw result payload for replay.
+
 ## Local/remote execution
 Consumers request capability, not transport. S05 may resolve native module, local worker, ecosystem adapter or remote provider. Command semantics remain stable across transports. Transport-specific failures map to S11 taxonomy.
 

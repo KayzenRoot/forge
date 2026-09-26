@@ -195,33 +195,53 @@ mod tests {
         }
     }
 
+    fn register_verified_fixture(
+        registry: &CapabilityRegistry,
+        mut descriptor: CapabilityDescriptor,
+    ) {
+        let id = descriptor.id.clone();
+        let evidence = descriptor.evidence;
+        let health = descriptor.health;
+        let observed_at_ms = descriptor.health_observed_at_ms;
+        descriptor.evidence = EvidenceLevel::Declared;
+        descriptor.health = HealthState::Unknown;
+        descriptor.health_observed_at_ms = 0;
+        registry.register(descriptor).expect("register declaration");
+        registry
+            .record_verified_runtime_evidence(&id, evidence, health, observed_at_ms)
+            .expect("record trusted test evidence");
+    }
+
     #[test]
     fn hard_privacy_and_locality_constraints_are_filtered_before_scoring() {
         let registry = CapabilityRegistry::new();
-        registry
-            .register(make(
+        register_verified_fixture(
+            &registry,
+            make(
                 "provider.high-but-sensitive",
                 PrivacyClass::Sensitive,
                 Locality::Native,
                 10_000,
-            ))
-            .expect("register");
-        registry
-            .register(make(
+            ),
+        );
+        register_verified_fixture(
+            &registry,
+            make(
                 "provider.remote",
                 PrivacyClass::Internal,
                 Locality::Remote,
                 1,
-            ))
-            .expect("register remote");
-        registry
-            .register(make(
+            ),
+        );
+        register_verified_fixture(
+            &registry,
+            make(
                 "provider.local",
                 PrivacyClass::Internal,
                 Locality::Native,
                 9000,
-            ))
-            .expect("register local");
+            ),
+        );
         let proof = resolve(&registry.snapshot().expect("snapshot"), &request());
         assert_eq!(proof.selected_provider.as_deref(), Some("provider.local"));
         assert!(
@@ -240,14 +260,15 @@ mod tests {
     #[test]
     fn stale_or_unknown_health_abstains_instead_of_guessing() {
         let registry = CapabilityRegistry::new();
-        registry
-            .register(make(
+        register_verified_fixture(
+            &registry,
+            make(
                 "provider.local",
                 PrivacyClass::Internal,
                 Locality::Native,
                 9000,
-            ))
-            .expect("register");
+            ),
+        );
         let mut stale = request();
         stale.now_ms = 10_000;
         let proof = resolve(&registry.snapshot().expect("snapshot"), &stale);

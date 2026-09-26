@@ -13,7 +13,7 @@
 
 ## Migration policy
 
-The SQLite database has a monotonic `PRAGMA user_version`. Schema version 1 is applied in one transaction during open. Schema version 2 adds `resource_usage` in a separate transaction; opening a version 1 store migrates it forward while preserving canonical rows. The runtime rejects a database newer than its supported schema. A migration must have a versioned forward step, an upgrade rehearsal from the previous schema, integrity checks and a documented recovery boundary before its schema version is advanced. No destructive downgrade is provided.
+The SQLite database has a monotonic `PRAGMA user_version`. Schema version 1 is applied in one transaction during open. Schema version 2 adds `resource_usage`; schema version 3 adds command-owner leases, authorization-decision replay/revocation records, and shared resource totals. Opening a v1/v2 store migrates it forward while preserving canonical rows. The runtime rejects a database newer than its supported schema. A migration must have a versioned forward step, an upgrade rehearsal from the previous schema, integrity checks and a documented recovery boundary before its schema version is advanced. No destructive downgrade is provided.
 
 ## Backup and restore
 
@@ -34,4 +34,6 @@ The SQLite database has a monotonic `PRAGMA user_version`. Schema version 1 is a
 - Tampered backup database rejection.
 - Outbox ordering and idempotent event identity.
 
-The process-kill test terminates a writer with an open SQLite transaction and verifies rollback after reopen. It covers this transaction boundary only; exhaustive crash-at-every-boundary fault injection and destructive migration rehearsal remain certification gaps.
+The command consistency test injects a conflicting outbox identity after the state CAS and proves rollback leaves canonical state and receipt unchanged. Process interruption tests terminate a writer with an open SQLite transaction and verify rollback after reopen. The candidate's exact commit boundary is one SQLite transaction; post-commit outbox publication is recoverable and idempotent. Platform power-loss behavior at the storage device/fsync layer is not established by these process tests.
+
+For C03, a crash-recovery intent stays `in_flight` while its owner instance heartbeat and 60-second lease are live. Only an absent/stale owner or expired lease becomes `unknown_outcome`. Opening a second live store preserves the intent; an unknown external effect is never retried without reconciliation. CAS state, outbox events, and idempotency receipt commit atomically.

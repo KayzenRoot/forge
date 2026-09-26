@@ -13,6 +13,11 @@ cargo run -p forge-cli -- contract validate schema.json instance.json
 
 `doctor` opens or initializes the local SQLite state root, checks database integrity, records the native boot phase, and reports scoped readiness and capability fingerprints. It reports HIVE as not configured and semantic embeddings as disabled. It does not make network calls or start a model/provider.
 
+The doctor report also names Core, Hades, IRIS, remote telemetry, LLM, and provider status. These
+integrations are reported as `not_configured` before optional discovery; embeddings are `disabled`.
+Readiness, state-root, database-integrity, schema-version, resource-usage, capability-snapshot,
+and boot fingerprints provide local diagnostics when every optional service is absent.
+
 The `hash` command accepts regular files up to 256 MiB. Contract validation accepts JSON files up to 1 MiB and rejects external schema references. A valid instance exits zero; an invalid instance prints safe invalid paths and exits nonzero without echoing the submitted values.
 
 ## State boundary

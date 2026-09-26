@@ -303,6 +303,7 @@ mod tests {
         assert!(recorder.record("FORGE.RUNTIME.DEGRADED"));
         assert!(recorder.record("FORGE.RUNTIME.READY"));
         assert!(!recorder.record("path=C:\\secret"));
+        assert!(!recorder.record("credential=Bearer ghp_C03CANARY0123456789ABCDEF"));
         assert_eq!(
             recorder.snapshot(),
             vec!["FORGE.RUNTIME.DEGRADED", "FORGE.RUNTIME.READY"]

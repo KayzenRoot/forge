@@ -320,9 +320,9 @@ pub fn boot_native(config: NativeBootConfig) -> Result<NativeBoot, BootError> {
             capability_id: "forge.state.local".into(),
             version: "1.0.0".into(),
             contract_id: "forge.contract.state-store".into(),
-            evidence: EvidenceLevel::RuntimeVerified,
-            health: HealthState::Ready,
-            health_observed_at_ms: observed_at_ms,
+            evidence: EvidenceLevel::Declared,
+            health: HealthState::Unknown,
+            health_observed_at_ms: 0,
             health_max_age_ms: 30_000,
             privacy: PrivacyClass::Internal,
             side_effect: SideEffectClass::LocalMutation,
@@ -334,12 +334,37 @@ pub fn boot_native(config: NativeBootConfig) -> Result<NativeBoot, BootError> {
             locality: Locality::Native,
         })
         .map_err(|_| BootError::InvalidConfiguration)?;
+    capabilities
+        .record_verified_runtime_evidence(
+            "forge.native.state.sqlite",
+            if readiness.ready {
+                EvidenceLevel::RuntimeVerified
+            } else {
+                EvidenceLevel::ContractValidated
+            },
+            if readiness.ready {
+                HealthState::Ready
+            } else {
+                HealthState::Degraded
+            },
+            observed_at_ms,
+        )
+        .map_err(|_| BootError::InvalidConfiguration)?;
     let capability_snapshot = capabilities
         .snapshot()
         .map_err(|_| BootError::Fingerprint)?;
     let state_root = state_store.root().to_string_lossy().into_owned();
     let optional_services = BTreeMap::from([
         ("hive".to_owned(), OptionalServiceState::NotConfigured),
+        ("core".to_owned(), OptionalServiceState::NotConfigured),
+        ("hades".to_owned(), OptionalServiceState::NotConfigured),
+        ("iris".to_owned(), OptionalServiceState::NotConfigured),
+        (
+            "remote_telemetry".to_owned(),
+            OptionalServiceState::NotConfigured,
+        ),
+        ("llm".to_owned(), OptionalServiceState::NotConfigured),
+        ("provider".to_owned(), OptionalServiceState::NotConfigured),
         (
             "semantic_embeddings".to_owned(),
             OptionalServiceState::Disabled,
@@ -492,8 +517,22 @@ mod tests {
             boot.report.optional_services["hive"],
             OptionalServiceState::NotConfigured
         );
+        for service in [
+            "core",
+            "hades",
+            "iris",
+            "remote_telemetry",
+            "llm",
+            "provider",
+        ] {
+            assert_eq!(
+                boot.report.optional_services[service],
+                OptionalServiceState::NotConfigured,
+                "optional service {service} must be diagnosed without a remote probe"
+            );
+        }
         assert_eq!(boot.report.database_integrity, "ok");
-        assert_eq!(boot.report.database_schema_version, 2);
+        assert_eq!(boot.report.database_schema_version, 3);
     }
 
     #[test]

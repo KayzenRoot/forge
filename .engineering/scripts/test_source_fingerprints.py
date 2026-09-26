@@ -13,6 +13,14 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
+from verify_source_fingerprints import (
+    MAX_MANIFEST_PATH_DEPTH,
+    MAX_TREE_ENTRIES,
+    GitResourceLimit,
+    parse_tree,
+    safe_manifest_path,
+)
+
 
 ROOT = Path(__file__).resolve().parents[2]
 VERIFIER = Path(__file__).with_name("verify_source_fingerprints.py")
@@ -111,10 +119,11 @@ def create_fixture(
     name: str,
     paths: list[str],
     mutate_rows: Callable[[list[bytes]], list[bytes]] | None = None,
+    object_format: str = "sha1",
 ) -> tuple[Path, list[bytes], dict[str, bytes]]:
     repo = parent / name
     repo.mkdir()
-    run_git(repo, "init", "--quiet", "--initial-branch=main")
+    run_git(repo, "init", "--quiet", "--initial-branch=main", f"--object-format={object_format}")
     run_git(repo, "config", "core.autocrlf", "false")
     run_git(repo, "config", "gc.auto", "0")
     run_git(repo, "config", "user.name", "Fingerprint Fixture")
@@ -197,6 +206,21 @@ def assert_specific_failure(
 
 def main() -> int:
     paths = source_paths()
+    deep_path = b"/".join([b"segment"] * (MAX_MANIFEST_PATH_DEPTH + 1))
+    if safe_manifest_path(deep_path)[1] != "path exceeds its configured depth bound":
+        raise AssertionError("deep source path did not hit the configured depth bound")
+    tree_prefix = b"100644 blob " + b"0" * 40 + b"\t"
+    oversized_tree = b"".join(
+        tree_prefix + str(index).encode("ascii") + b"\0"
+        for index in range(MAX_TREE_ENTRIES + 1)
+    )
+    try:
+        parse_tree(oversized_tree)
+    except GitResourceLimit:
+        pass
+    else:
+        raise AssertionError("oversized Git tree did not hit the configured entry bound")
+
     with tempfile.TemporaryDirectory(prefix="forge-source-fingerprint-") as temporary:
         parent = Path(temporary)
         valid_repo, rows, payloads = create_fixture(parent, "valid", paths)
@@ -217,9 +241,24 @@ def main() -> int:
             raise AssertionError("valid fixture did not report its full commit SHA")
         if not re.fullmatch(r"[0-9a-f]{40,64}", str(result.get("tree_sha"))):
             raise AssertionError("valid fixture did not report its full tree SHA")
+        if result.get("git_object_format") != "sha1" or len(str(result["commit_sha"])) != 40:
+            raise AssertionError("SHA-1 fixture did not report a matching object format and commit ID")
         code_again, result_again, second_output = invoke(valid_repo, valid_commit)
         if code_again != 0 or first_output != second_output or result_again != result:
             raise AssertionError("verifier output was not deterministic for an immutable Git tree")
+
+        fabricated_code, fabricated_result, _ = invoke(valid_repo, "f" * 40)
+        if fabricated_code == 0 or "git_command_failed" not in {
+            item.get("code") for item in fabricated_result.get("errors", []) if isinstance(item, dict)
+        }:
+            raise AssertionError("fabricated commit ID was accepted as an exact Git revision")
+
+        sha256_repo, _, _ = create_fixture(parent, "valid-sha256", paths, object_format="sha256")
+        sha256_code, sha256_result, _ = invoke(sha256_repo)
+        if sha256_code != 0 or sha256_result.get("pass") is not True:
+            raise AssertionError(f"valid SHA-256 Git fixture failed: {sha256_result}")
+        if sha256_result.get("git_object_format") != "sha256" or len(str(sha256_result["commit_sha"])) != 64:
+            raise AssertionError("SHA-256 fixture did not report a matching object format and commit ID")
 
         def bad_digest(lines: list[bytes]) -> list[bytes]:
             digest, separator, path = lines[0].partition(b"  ")
@@ -354,6 +393,25 @@ def main() -> int:
         if not unavailable_mismatch:
             raise AssertionError("missing-object fixture did not identify the unavailable source blob")
 
+        oversized_repo, _, _ = create_fixture(parent, "oversized-source-blob", paths)
+        oversized_path = next(path for path in paths if path != ".gitattributes")
+        oversized_bytes = b"x" * (16 * 1024 * 1024 + 1)
+        oversized_file = oversized_repo.joinpath(*oversized_path.split("/"))
+        oversized_file.write_bytes(oversized_bytes)
+        manifest_path = oversized_repo / MANIFEST_RELATIVE
+        manifest_rows = manifest_path.read_bytes().splitlines()
+        replacement = f"{hashlib.sha256(oversized_bytes).hexdigest()}  {oversized_path}".encode("utf-8")
+        manifest_rows = [
+            replacement if row.endswith(b"  " + oversized_path.encode("utf-8")) else row
+            for row in manifest_rows
+        ]
+        manifest_path.write_bytes(b"\n".join(manifest_rows) + b"\n")
+        run_git(oversized_repo, "add", "--all")
+        run_git(oversized_repo, "commit", "--quiet", "-m", "oversized source fixture")
+        oversized_commit = run_git(oversized_repo, "rev-parse", "HEAD").decode("ascii").strip()
+        code, result, _ = invoke(oversized_repo, oversized_commit)
+        assert_specific_failure("oversized-source-blob", code, result, error_code="resource_limit")
+
         symlink_repo, _, _ = create_fixture(parent, "symlink", paths)
         symlink_path = next(path for path in paths if path != ".gitattributes")
         target_oid = run_git(symlink_repo, "hash-object", "-w", "--stdin", input_bytes=b"outside-target").decode("ascii").strip()
@@ -377,7 +435,8 @@ def main() -> int:
         "source fingerprint verifier fixtures passed: valid CRLF object, deterministic output, "
         "digest mismatch, invalid digest, duplicate, malformed, missing path, traversal, "
         "wrong count, path order, case-only Git tree alias, unavailable source blob, "
-        "symlink, Git failure"
+        "oversized source blob bound, symlink, fabricated commit rejection, SHA-1/SHA-256 "
+        "object-format validation, path-depth and tree-entry bounds, Git failure"
     )
     return 0
 

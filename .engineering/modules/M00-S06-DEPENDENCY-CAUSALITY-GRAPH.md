@@ -147,6 +147,17 @@ Graph data is security-sensitive because it reveals architecture. Persisted/expo
 ## Correctness rule
 Optimization is allowed only when proof preservation is sound. If Forge cannot prove an edge set complete enough for a risk class, it broadens test/build scope. False-positive impact costs time; false-negative impact can ship defects, so policy is intentionally asymmetric.
 
+## C03 proof-coverage gate
+
+The exact changed-path set is derived from `git diff --name-only -z` between resolved base and
+current HEAD commits; callers cannot provide a shorter path list. Git object format, both commit
+objects, current HEAD equality, and base ancestry are checked before compilation. A graph snapshot
+is not considered proof-complete merely because it contains the changed seed. In the absence of a
+trusted in-crate graph loader that marks required seed/edge coverage verified, the proof compiler
+broadens to the full proof-kind universe. Missing/invalid source fingerprint or an empty diff also
+broadens; a missing seed or low-confidence edge conservatively expands the cone. This may do extra
+verification, but it cannot certify an omitted path from a caller-supplied list.
+
 ## Test strategy
 - deterministic graph/fingerprint tests;
 - typed propagation property tests;

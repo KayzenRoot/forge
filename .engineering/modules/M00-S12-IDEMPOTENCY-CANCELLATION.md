@@ -163,3 +163,12 @@ Forbidden:
 
 ## Acceptance criteria
 S12 is accepted when Forge can deduplicate declared semantic intent, safely coalesce eligible in-flight work, propagate bounded cancellation/deadlines through owned task trees, detect zombie work and preserve ambiguous external outcomes for reconciliation without claiming impossible cross-system exactly-once semantics.
+
+## C03 command ownership and receipt recovery
+
+Command identity includes the principal, authorization scope, target resource and run as well as the
+contract/input/idempotency semantics, so a replay cannot cross those authority boundaries. S08
+stores an owner instance and bounded lease with an active intent. A second live store preserves
+that intent; reopening after a missing/stale owner or expired lease marks it `unknown_outcome`.
+Commit CAS, durable outbox events and the final receipt are one transaction. A failed transaction
+leaves the intent recoverable and never triggers an automatic repeat of an unknown external effect.

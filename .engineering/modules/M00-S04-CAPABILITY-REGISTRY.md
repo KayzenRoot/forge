@@ -133,6 +133,12 @@ Registry emits typed events for definition/evidence/snapshot changes. Events con
 ## Security
 Capability registration is not permission. Provider manifests are validated/signed or provenance-bound according to trust class. External metadata is untrusted input. Registry prevents privilege expansion through capability aliases/version confusion. Sensitive configuration is referenced, never copied into descriptors/fingerprints.
 
+The public registry accepts new entries only as `Declared` with `Unknown` health and no observation
+timestamp. Public health updates cannot assert `Ready`, and public evidence promotion cannot claim
+verification. Trusted runtime code records higher evidence/readiness. A snapshot can only be created
+by the registry and exposes immutable read access, so a caller cannot hand the resolver a forged
+`Proven`/`Ready` entry or a mutable snapshot digest.
+
 ## Test economics
 Capability DNA and CSG fingerprints become Green Proof keys. If an unrelated provider changes, proofs that do not depend on it remain valid. Changes in provider equivalence or capability contract invalidate only intersecting proof sets unless confidence is insufficient.
 

@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,18 @@ EXCLUDED_SOURCE_PREFIXES = (
     ".engineering/work-orders/",
     ".engineering/scripts/",
 )
+GIT_COMMAND_TIMEOUT_SECONDS = 30
+MAX_GIT_INPUT_BYTES = 1 * 1024 * 1024
+MAX_GIT_STDERR_BYTES = 1 * 1024 * 1024
+MAX_GIT_STDOUT_BYTES = 8 * 1024 * 1024
+MAX_TREE_OUTPUT_BYTES = 16 * 1024 * 1024
+MAX_TREE_ENTRIES = 100_000
+MAX_MANIFEST_BYTES = 1 * 1024 * 1024
+MAX_MANIFEST_ENTRIES = 4096
+MAX_MANIFEST_PATH_BYTES = 4096
+MAX_MANIFEST_PATH_DEPTH = 64
+MAX_SOURCE_BLOB_BYTES = 16 * 1024 * 1024
+MAX_SOURCE_BATCH_BYTES = 128 * 1024 * 1024
 
 
 class GitCommandError(Exception):
@@ -47,7 +60,20 @@ class GitExecutableError(Exception):
     pass
 
 
-def run_git(repo: Path, args: list[str], input_bytes: bytes | None = None) -> bytes:
+class GitResourceLimit(Exception):
+    pass
+
+
+def run_git(
+    repo: Path,
+    args: list[str],
+    input_bytes: bytes | None = None,
+    *,
+    max_stdout_bytes: int = MAX_GIT_STDOUT_BYTES,
+    max_stderr_bytes: int = MAX_GIT_STDERR_BYTES,
+) -> bytes:
+    if input_bytes is not None and len(input_bytes) > MAX_GIT_INPUT_BYTES:
+        raise GitResourceLimit("git input exceeded its configured bound")
     environment = os.environ.copy()
     for key in (
         "GIT_DIR",
@@ -74,23 +100,104 @@ def run_git(repo: Path, args: list[str], input_bytes: bytes | None = None) -> by
         *args,
     ]
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             command,
-            input=input_bytes,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            check=False,
             env=environment,
         )
     except FileNotFoundError as exc:
         raise GitExecutableError("git executable is unavailable") from exc
-    if completed.returncode != 0:
+
+    outputs: dict[str, list[bytes]] = {"stdout": [], "stderr": []}
+    oversized = threading.Event()
+
+    def drain(name: str, stream: object, limit: int) -> None:
+        total = 0
+        while True:
+            chunk = stream.read(min(64 * 1024, limit - total + 1))  # type: ignore[attr-defined]
+            if not chunk:
+                return
+            total += len(chunk)
+            if total > limit:
+                oversized.set()
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+                return
+            outputs[name].append(chunk)
+
+    stdout_reader = threading.Thread(
+        target=drain, args=("stdout", process.stdout, max_stdout_bytes), daemon=True
+    )
+    stderr_reader = threading.Thread(
+        target=drain, args=("stderr", process.stderr, max_stderr_bytes), daemon=True
+    )
+    stdout_reader.start()
+    stderr_reader.start()
+
+    def write_input() -> None:
+        if process.stdin is None:
+            return
+        try:
+            if input_bytes is not None:
+                process.stdin.write(input_bytes)
+                process.stdin.flush()
+        except BrokenPipeError:
+            pass
+        finally:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+
+    input_writer = None
+    if input_bytes is None:
+        if process.stdin is not None:
+            process.stdin.close()
+    else:
+        input_writer = threading.Thread(target=write_input, daemon=True)
+        input_writer.start()
+    try:
+        process.wait(timeout=GIT_COMMAND_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as exc:
+        try:
+            process.kill()
+        except OSError:
+            pass
+        process.wait()
+        raise GitResourceLimit("git command exceeded its configured time bound") from exc
+    except BrokenPipeError:
+        process.wait(timeout=GIT_COMMAND_TIMEOUT_SECONDS)
+    finally:
+        stdout_reader.join(timeout=1)
+        stderr_reader.join(timeout=1)
+        if input_writer is not None:
+            input_writer.join(timeout=1)
+        if stdout_reader.is_alive() or stderr_reader.is_alive():
+            try:
+                process.kill()
+            except OSError:
+                pass
+            stdout_reader.join(timeout=1)
+            stderr_reader.join(timeout=1)
+    if oversized.is_set():
+        raise GitResourceLimit("git output exceeded its configured bound")
+    if stdout_reader.is_alive() or stderr_reader.is_alive() or (
+        input_writer is not None and input_writer.is_alive()
+    ):
+        raise GitResourceLimit("git output reader exceeded its configured time bound")
+    if process.returncode != 0:
         step = args[0] if args else "command"
-        raise GitCommandError(step, completed.returncode)
-    return completed.stdout
+        raise GitCommandError(step, process.returncode)
+    return b"".join(outputs["stdout"])
 
 
 def safe_manifest_path(path_bytes: bytes) -> tuple[str | None, str | None]:
+    if len(path_bytes) > MAX_MANIFEST_PATH_BYTES:
+        return None, "path exceeds its configured byte bound"
     try:
         path = path_bytes.decode("utf-8", "strict")
     except UnicodeDecodeError:
@@ -104,6 +211,8 @@ def safe_manifest_path(path_bytes: bytes) -> tuple[str | None, str | None]:
         return path, "control characters are not allowed in paths"
 
     parts = path.split("/")
+    if len(parts) > MAX_MANIFEST_PATH_DEPTH:
+        return path, "path exceeds its configured depth bound"
     if any(part in ("", ".", "..") for part in parts):
         return path, "empty, dot, or parent path component is not allowed"
     if any(part != part.rstrip(" .") for part in parts):
@@ -116,6 +225,8 @@ def safe_manifest_path(path_bytes: bytes) -> tuple[str | None, str | None]:
 
 
 def parse_tree(data: bytes) -> tuple[dict[bytes, dict[str, str]], list[dict[str, str]]]:
+    if len(data) > MAX_TREE_OUTPUT_BYTES:
+        raise GitResourceLimit("Git tree exceeded its configured byte bound")
     entries: dict[bytes, dict[str, str]] = {}
     errors: list[dict[str, str]] = []
     for record in data.split(b"\0"):
@@ -136,19 +247,34 @@ def parse_tree(data: bytes) -> tuple[dict[bytes, dict[str, str]], list[dict[str,
             errors.append({"code": "duplicate_tree_path", "message": "Git tree contains an ambiguous duplicate path"})
             continue
         entries[path] = entry
+        if len(entries) > MAX_TREE_ENTRIES:
+            raise GitResourceLimit("Git tree exceeded its configured entry bound")
     return entries, errors
 
 
 def read_object_batch(
-    repo: Path, object_ids: list[str]
+    repo: Path,
+    object_ids: list[str],
+    *,
+    max_blob_bytes: int,
+    max_batch_bytes: int,
+    max_total_blob_bytes: int,
 ) -> tuple[dict[str, bytes], set[str]]:
     if not object_ids:
         return {}, set()
+    if len(object_ids) > MAX_MANIFEST_ENTRIES:
+        raise GitResourceLimit("Git object batch exceeded its configured object count")
     payload = b"\n".join(oid.encode("ascii") for oid in object_ids) + b"\n"
-    output = run_git(repo, ["cat-file", "--batch"], payload)
+    output = run_git(
+        repo,
+        ["cat-file", "--batch"],
+        payload,
+        max_stdout_bytes=max_batch_bytes,
+    )
     objects: dict[str, bytes] = {}
     missing: set[str] = set()
     offset = 0
+    total_blob_bytes = 0
 
     for expected_oid in object_ids:
         header_end = output.find(b"\n", offset)
@@ -169,10 +295,17 @@ def read_object_batch(
             raise GitExecutableError("git cat-file returned invalid object metadata") from exc
         if returned_oid != expected_oid.lower() or size < 0:
             raise GitExecutableError("git cat-file returned unexpected object metadata")
+        if size > max_blob_bytes:
+            raise GitResourceLimit("Git blob exceeded its configured byte bound")
+        total_blob_bytes += size
+        if total_blob_bytes > max_total_blob_bytes:
+            raise GitResourceLimit("Git blob batch exceeded its configured aggregate bound")
         end = offset + size
         if end > len(output) or output[end : end + 1] != b"\n":
             raise GitExecutableError("git cat-file returned a truncated object")
         if object_type == "blob":
+            if end - offset > max_blob_bytes:
+                raise GitResourceLimit("Git blob exceeded its configured byte bound")
             objects[expected_oid] = output[offset:end]
         else:
             missing.add(expected_oid)
@@ -192,6 +325,7 @@ def base_result(commit_sha: str | None = None, tree_sha: str | None = None) -> d
     return {
         "commit_sha": commit_sha,
         "tree_sha": tree_sha,
+        "git_object_format": None,
         "manifest_count": 0,
         "pass": False,
         "mismatches": [],
@@ -217,23 +351,34 @@ def verify(repo_argument: str | None, revision: str) -> tuple[dict[str, Any], in
 
     result = base_result()
     try:
+        object_format = run_git(repo, ["rev-parse", "--show-object-format"]).decode("ascii").strip()
+        if object_format not in ("sha1", "sha256"):
+            raise GitExecutableError("git returned an unsupported object format")
+        result["git_object_format"] = object_format
+        expected_object_id_length = 40 if object_format == "sha1" else 64
         resolved_commit = run_git(
             repo,
             ["rev-parse", "--verify", "--end-of-options", f"{revision}^{{commit}}"],
         ).decode("ascii").strip().lower()
-        if not OBJECT_ID_PATTERN.fullmatch(resolved_commit):
-            raise GitExecutableError("git returned an invalid commit object ID")
+        if len(resolved_commit) != expected_object_id_length or not OBJECT_ID_PATTERN.fullmatch(resolved_commit):
+            raise GitExecutableError("git returned a commit ID that does not match its object format")
         result["commit_sha"] = resolved_commit
         tree_sha = run_git(
             repo,
             ["rev-parse", "--verify", "--end-of-options", f"{resolved_commit}^{{tree}}"],
         ).decode("ascii").strip().lower()
-        if not OBJECT_ID_PATTERN.fullmatch(tree_sha):
-            raise GitExecutableError("git returned an invalid tree object ID")
+        if len(tree_sha) != expected_object_id_length or not OBJECT_ID_PATTERN.fullmatch(tree_sha):
+            raise GitExecutableError("git returned a tree ID that does not match its object format")
         result["tree_sha"] = tree_sha
-        tree_output = run_git(repo, ["ls-tree", "-r", "-z", "--full-tree", resolved_commit])
+        tree_output = run_git(
+            repo,
+            ["ls-tree", "-r", "-z", "--full-tree", resolved_commit],
+            max_stdout_bytes=MAX_TREE_OUTPUT_BYTES,
+        )
         tree, tree_errors = parse_tree(tree_output)
         result["errors"].extend(tree_errors)
+        if any(len(entry["oid"]) != expected_object_id_length for entry in tree.values()):
+            raise GitExecutableError("Git tree contains an object ID that does not match its object format")
 
         manifest_entry = tree.get(MANIFEST_PATH.encode("utf-8"))
         if manifest_entry is None:
@@ -243,13 +388,21 @@ def verify(repo_argument: str | None, revision: str) -> tuple[dict[str, Any], in
             result["errors"].append({"code": "manifest_not_regular", "message": "manifest is not a regular Git blob"})
             return result, 1
 
-        manifest_objects, missing_manifest_objects = read_object_batch(repo, [manifest_entry["oid"]])
+        manifest_objects, missing_manifest_objects = read_object_batch(
+            repo,
+            [manifest_entry["oid"]],
+            max_blob_bytes=MAX_MANIFEST_BYTES,
+            max_batch_bytes=MAX_MANIFEST_BYTES + 4096,
+            max_total_blob_bytes=MAX_MANIFEST_BYTES,
+        )
         if manifest_entry["oid"] in missing_manifest_objects or manifest_entry["oid"] not in manifest_objects:
             result["errors"].append({"code": "manifest_object_missing", "message": "manifest blob is unavailable in the Git object database"})
             return result, 1
 
         manifest_bytes = manifest_objects[manifest_entry["oid"]]
         raw_lines = manifest_bytes.split(b"\n")
+        if len(raw_lines) > MAX_MANIFEST_ENTRIES + 1:
+            raise GitResourceLimit("source manifest exceeded its configured entry bound")
         if raw_lines and raw_lines[-1] == b"":
             raw_lines.pop()
         result["manifest_count"] = len(raw_lines)
@@ -366,7 +519,13 @@ def verify(repo_argument: str | None, revision: str) -> tuple[dict[str, Any], in
             if entry["oid"] not in object_ids:
                 object_ids.append(entry["oid"])
 
-        source_objects, missing_source_objects = read_object_batch(repo, object_ids)
+        source_objects, missing_source_objects = read_object_batch(
+            repo,
+            object_ids,
+            max_blob_bytes=MAX_SOURCE_BLOB_BYTES,
+            max_batch_bytes=MAX_SOURCE_BATCH_BYTES,
+            max_total_blob_bytes=MAX_SOURCE_BATCH_BYTES,
+        )
         for _, path, path_bytes, expected in records:
             entry = tree.get(path_bytes)
             if entry is None or entry["type"] != "blob" or entry["mode"] not in ("100644", "100755"):
@@ -402,6 +561,9 @@ def verify(repo_argument: str | None, revision: str) -> tuple[dict[str, Any], in
         return result, 2
     except GitExecutableError as exc:
         result["errors"].append({"code": "git_output_invalid", "message": str(exc)})
+        return result, 2
+    except GitResourceLimit as exc:
+        result["errors"].append({"code": "resource_limit", "message": str(exc)})
         return result, 2
 
 

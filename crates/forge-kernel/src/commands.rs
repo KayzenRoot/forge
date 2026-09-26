@@ -2,9 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use forge_contracts::{ContractId, ContractVersion, ValidatedContract};
-use forge_state::{ForgeStateStore, IdempotencyState, StateError};
+use forge_state::{
+    CanonicalStateTransition, ForgeStateStore, IdempotencyState, StateError, StoredEvent,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
@@ -60,6 +63,9 @@ pub struct StateTransitionGuard {
 pub struct CommandRequest {
     pub command_id: String,
     pub principal_id: String,
+    pub authorization_scope: String,
+    pub resource_id: String,
+    pub run_id: String,
     pub contract_id: ContractId,
     pub contract_version: ContractVersion,
     pub idempotency_key: Option<String>,
@@ -74,32 +80,89 @@ pub struct CommandRequest {
     pub payload: Value,
 }
 
-#[derive(Clone, Debug)]
-pub struct AuthorizationContext {
-    principal_id: String,
-    permissions: BTreeSet<String>,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostAuthorizationClaims {
+    pub decision_id: String,
+    pub subject: String,
+    pub action: String,
+    pub scope: String,
+    pub resource_id: String,
+    pub run_id: String,
+    pub valid_from_ms: u64,
+    pub expires_at_ms: u64,
+    pub permissions: BTreeSet<String>,
 }
 
-impl AuthorizationContext {
-    /// Construct this value only from the host application's authenticated permission decision.
-    pub fn from_trusted_host(
-        principal_id: impl Into<String>,
-        permissions: BTreeSet<String>,
-    ) -> Result<Self, CommandError> {
-        let principal_id = principal_id.into();
-        if !valid_token(&principal_id)
-            || permissions
-                .iter()
-                .any(|permission| !valid_permission(permission))
-        {
-            return Err(CommandError::InvalidRequest);
-        }
-        Ok(Self {
-            principal_id,
-            permissions,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostAuthorizationDecision {
+    pub claims: HostAuthorizationClaims,
+    pub mac: String,
+}
+
+#[derive(Clone)]
+pub struct HostDecisionSigner {
+    key: [u8; 32],
+}
+
+#[derive(Clone)]
+pub struct HostDecisionVerifier {
+    key: [u8; 32],
+}
+
+impl HostDecisionSigner {
+    /// Configure the shared host-decision key from the trusted host's protected configuration.
+    pub fn new(key: [u8; 32]) -> Self {
+        Self { key }
+    }
+
+    pub fn sign(
+        &self,
+        claims: HostAuthorizationClaims,
+    ) -> Result<HostAuthorizationDecision, CommandError> {
+        validate_host_claims(&claims)?;
+        let bytes = serde_json::to_vec(&claims).map_err(|_| CommandError::InvalidRequest)?;
+        Ok(HostAuthorizationDecision {
+            claims,
+            mac: blake3::keyed_hash(&self.key, &bytes).to_hex().to_string(),
         })
     }
 }
+
+impl HostDecisionVerifier {
+    /// Configure this verifier only in the trusted host that creates the command bus.
+    pub fn new(key: [u8; 32]) -> Self {
+        Self { key }
+    }
+
+    fn verify(
+        &self,
+        decision: &HostAuthorizationDecision,
+        now_ms: u64,
+    ) -> Result<String, CommandError> {
+        validate_host_claims(&decision.claims)?;
+        if decision.claims.valid_from_ms > now_ms
+            || decision.claims.expires_at_ms < now_ms
+            || decision
+                .claims
+                .expires_at_ms
+                .saturating_sub(decision.claims.valid_from_ms)
+                > HOST_DECISION_MAX_TTL_MS
+        {
+            return Err(CommandError::PermissionDenied);
+        }
+        let bytes =
+            serde_json::to_vec(&decision.claims).map_err(|_| CommandError::InvalidRequest)?;
+        let expected = blake3::keyed_hash(&self.key, &bytes).to_hex().to_string();
+        if !constant_time_hex_eq(&decision.mac, &expected) {
+            return Err(CommandError::PermissionDenied);
+        }
+        Ok(blake3::hash(&bytes).to_hex().to_string())
+    }
+}
+
+const HOST_DECISION_MAX_TTL_MS: u64 = 300_000;
 
 #[derive(Clone)]
 pub struct CommandContext {
@@ -189,6 +252,7 @@ pub struct CommandBus {
     registry: RwLock<Registry>,
     maximum_handlers: usize,
     event_bus: Option<Arc<EventBus>>,
+    host_decision_verifier: Option<HostDecisionVerifier>,
 }
 
 impl CommandBus {
@@ -200,6 +264,7 @@ impl CommandBus {
             registry: RwLock::new(Registry::default()),
             maximum_handlers,
             event_bus: None,
+            host_decision_verifier: None,
         })
     }
 
@@ -208,6 +273,25 @@ impl CommandBus {
         event_bus: Arc<EventBus>,
     ) -> Result<Self, CommandError> {
         let mut bus = Self::new(maximum_handlers)?;
+        bus.event_bus = Some(event_bus);
+        Ok(bus)
+    }
+
+    pub fn with_host_decision_verifier(
+        maximum_handlers: usize,
+        verifier: HostDecisionVerifier,
+    ) -> Result<Self, CommandError> {
+        let mut bus = Self::new(maximum_handlers)?;
+        bus.host_decision_verifier = Some(verifier);
+        Ok(bus)
+    }
+
+    pub fn with_event_bus_and_host_decision_verifier(
+        maximum_handlers: usize,
+        event_bus: Arc<EventBus>,
+        verifier: HostDecisionVerifier,
+    ) -> Result<Self, CommandError> {
+        let mut bus = Self::with_host_decision_verifier(maximum_handlers, verifier)?;
         bus.event_bus = Some(event_bus);
         Ok(bus)
     }
@@ -258,11 +342,18 @@ impl CommandBus {
         &self,
         store: &ForgeStateStore,
         request: CommandRequest,
-        authorization: &AuthorizationContext,
+        authorization: &HostAuthorizationDecision,
         cancellation: CancellationToken,
         deadline: Deadline,
         lease: Option<ResourceLease>,
     ) -> Result<CommandOutcome, CommandError> {
+        let now_ms = host_time_ms()?;
+        let verifier = self
+            .host_decision_verifier
+            .as_ref()
+            .ok_or(CommandError::PermissionDenied)?;
+        let authorization_fingerprint = verifier.verify(authorization, now_ms)?;
+        let claims = &authorization.claims;
         let (registration, handler) = {
             let registry = self
                 .registry
@@ -278,8 +369,10 @@ impl CommandBus {
                 .ok_or(CommandError::NoHandler)?
         };
         if !valid_token(&request.command_id)
-            || request.principal_id != authorization.principal_id
             || !valid_token(&request.principal_id)
+            || !valid_token(&request.authorization_scope)
+            || !valid_token(&request.resource_id)
+            || !valid_token(&request.run_id)
             || request.contract_id != registration.contract.definition().id
             || request.contract_version != registration.contract.definition().version
             || request.sensitivity == SensitivityClass::Secret
@@ -306,12 +399,20 @@ impl CommandBus {
                 CommandError::InvalidRequest
             });
         }
+        if request.principal_id != claims.subject
+            || request.authorization_scope != claims.scope
+            || request.resource_id != claims.resource_id
+            || request.run_id != claims.run_id
+            || claims.action != request.contract_id.as_str()
+        {
+            return Err(CommandError::PermissionDenied);
+        }
         if registration.emits_events && self.event_bus.is_none() {
             return Err(CommandError::EventBusUnavailable);
         }
         if !registration
             .required_permissions
-            .is_subset(&authorization.permissions)
+            .is_subset(&claims.permissions)
         {
             return Err(CommandError::PermissionDenied);
         }
@@ -333,6 +434,16 @@ impl CommandBus {
         }
         if let Some(lease) = &lease {
             lease.ensure_active()?;
+        }
+        if !store
+            .consume_host_authorization_decision(
+                &claims.decision_id,
+                &authorization_fingerprint,
+                now_ms,
+            )
+            .await?
+        {
+            return Err(CommandError::PermissionDenied);
         }
 
         let input_fingerprint = blake3::hash(
@@ -483,54 +594,66 @@ impl CommandBus {
             .await?;
             return Err(CommandError::InvalidRequest);
         }
-        if registration.idempotency == IdempotencyMode::StateTransitionGuarded {
-            let guard = request
-                .state_guard
-                .as_ref()
-                .ok_or(CommandError::InvalidRequest)?;
-            let Some(state_update) = output.state_update.as_ref() else {
-                record_failure(
-                    store,
-                    identity.as_deref(),
-                    registration.side_effect,
-                    "FORGE.COMMAND.STATE_TRANSITION_MISSING",
-                    false,
-                    false,
-                )
-                .await?;
-                return Err(CommandError::StateTransitionMissing);
+        let sensitive = request.sensitivity == SensitivityClass::Sensitive;
+        if !sensitive {
+            forge_state::validate_payload_for_persistence(&output.value)
+                .map_err(|_| CommandError::SecretPersistenceDenied)?;
+        }
+        let state_transition =
+            if registration.idempotency == IdempotencyMode::StateTransitionGuarded {
+                let guard = request
+                    .state_guard
+                    .as_ref()
+                    .ok_or(CommandError::InvalidRequest)?;
+                let Some(state_update) = output.state_update.as_ref() else {
+                    record_failure(
+                        store,
+                        identity.as_deref(),
+                        registration.side_effect,
+                        "FORGE.COMMAND.STATE_TRANSITION_MISSING",
+                        false,
+                        false,
+                    )
+                    .await?;
+                    return Err(CommandError::StateTransitionMissing);
+                };
+                Some(CanonicalStateTransition {
+                    owner: guard.owner.clone(),
+                    key: guard.key.clone(),
+                    expected_version: guard.expected_version,
+                    value: state_update.clone(),
+                })
+            } else {
+                if output.state_update.is_some() {
+                    record_failure(
+                        store,
+                        identity.as_deref(),
+                        registration.side_effect,
+                        "FORGE.COMMAND.UNEXPECTED_STATE_TRANSITION",
+                        false,
+                        registration.side_effect != SideEffectClass::Pure,
+                    )
+                    .await?;
+                    return Err(CommandError::InvalidRequest);
+                }
+                None
             };
-            if !store
-                .compare_and_set_canonical(
-                    &guard.owner,
-                    &guard.key,
-                    guard.expected_version,
-                    state_update,
-                )
-                .await?
-            {
-                record_failure(
-                    store,
-                    identity.as_deref(),
-                    registration.side_effect,
-                    "FORGE.COMMAND.STATE_CONFLICT",
-                    false,
-                    false,
-                )
-                .await?;
-                return Err(CommandError::StateConflict);
-            }
-        } else if output.state_update.is_some() {
+        if let Some(transition) = state_transition.as_ref()
+            && forge_state::validate_payload_for_persistence(&transition.value).is_err()
+        {
             record_failure(
                 store,
                 identity.as_deref(),
                 registration.side_effect,
-                "FORGE.COMMAND.UNEXPECTED_STATE_TRANSITION",
+                "FORGE.COMMAND.SENSITIVE_STATE_REJECTED",
                 false,
                 registration.side_effect != SideEffectClass::Pure,
             )
             .await?;
-            return Err(CommandError::InvalidRequest);
+            return Err(CommandError::SecretPersistenceDenied);
+        }
+        if registration.idempotency == IdempotencyMode::StateTransitionGuarded {
+            debug_assert!(state_transition.is_some());
         }
         if output.pending_events.len() > 1024
             || !registration.emits_events && !output.pending_events.is_empty()
@@ -546,7 +669,9 @@ impl CommandBus {
             .await?;
             return Err(CommandError::InvalidRequest);
         }
-        let mut event_ids = Vec::with_capacity(output.pending_events.len());
+        let mut durable_events = Vec::new();
+        let mut durable_event_ids = Vec::new();
+        let mut ephemeral_events = Vec::new();
         if !output.pending_events.is_empty() {
             let event_bus = self
                 .event_bus
@@ -555,51 +680,112 @@ impl CommandBus {
             let command_identity = identity
                 .as_deref()
                 .ok_or(CommandError::IdempotencyRequired)?;
-            for (index, mut event) in output.pending_events.into_iter().enumerate() {
+            for (index, mut event) in output.pending_events.iter().cloned().enumerate() {
                 event.event_id = format!("command.{command_identity}.{index}");
-                let result = match event.class {
-                    EventClass::EphemeralLocal | EventClass::Telemetry => event_bus
-                        .publish_ephemeral(event)
-                        .map(|receipt| receipt.event_id),
+                match event.class {
+                    EventClass::EphemeralLocal | EventClass::Telemetry => {
+                        if let Err(error) = event_bus.validate_ephemeral_before_commit(&event) {
+                            record_failure(
+                                store,
+                                identity.as_deref(),
+                                registration.side_effect,
+                                "FORGE.COMMAND.EVENT_INVALID",
+                                false,
+                                registration.side_effect != SideEffectClass::Pure,
+                            )
+                            .await?;
+                            return Err(CommandError::Event(error));
+                        }
+                        ephemeral_events.push(event);
+                    }
                     EventClass::DurableLocal
                     | EventClass::Integration
-                    | EventClass::AuditEvidence => event_bus
-                        .publish_durable(store, event)
-                        .await
-                        .map(|receipt| receipt.event_id),
-                };
-                match result {
-                    Ok(event_id) => event_ids.push(event_id),
-                    Err(error) => {
-                        record_failure(
-                            store,
-                            identity.as_deref(),
-                            registration.side_effect,
-                            "FORGE.COMMAND.EVENT_OUTCOME_UNKNOWN",
-                            false,
-                            true,
-                        )
-                        .await?;
-                        return Err(CommandError::Event(error));
+                    | EventClass::AuditEvidence => {
+                        if let Err(error) = event_bus.validate_durable_before_commit(&event) {
+                            record_failure(
+                                store,
+                                identity.as_deref(),
+                                registration.side_effect,
+                                "FORGE.COMMAND.EVENT_INVALID",
+                                false,
+                                registration.side_effect != SideEffectClass::Pure,
+                            )
+                            .await?;
+                            return Err(CommandError::Event(error));
+                        }
+                        durable_event_ids.push(event.event_id.clone());
+                        durable_events.push(StoredEvent {
+                            event_id: event.event_id.clone(),
+                            contract_id: event.contract_id.clone(),
+                            payload: serde_json::to_value(&event)
+                                .map_err(|_| CommandError::InvalidRequest)?,
+                        });
                     }
                 }
             }
         }
         let result_fingerprint = blake3::hash(&result_bytes).to_hex().to_string();
         if let Some(identity) = identity.as_deref() {
-            let sensitive = request.sensitivity == SensitivityClass::Sensitive;
             let persisted = serde_json::json!({
                 "_forgeCommandReceipt": {
                     "schemaVersion": 1,
                     "resultFingerprint": result_fingerprint,
                     "commitEvidenceFingerprint": output.commit_evidence_fingerprint,
-                    "eventIds": event_ids,
+                    "eventIds": durable_event_ids.clone(),
                     "sensitive": sensitive,
                     "executionFingerprint": execution_fingerprint,
+                    "authorizationDecisionFingerprint": authorization_fingerprint.clone(),
                 },
                 "value": if sensitive { Value::Null } else { output.value.clone() },
             });
-            store.complete_idempotent(identity, &persisted).await?;
+            if let Err(error) = store
+                .commit_command(
+                    identity,
+                    &persisted,
+                    state_transition.as_ref(),
+                    &durable_events,
+                )
+                .await
+            {
+                if matches!(error, StateError::StateConflict) {
+                    let _ = record_failure(
+                        store,
+                        Some(identity),
+                        registration.side_effect,
+                        "FORGE.COMMAND.STATE_CONFLICT",
+                        false,
+                        false,
+                    )
+                    .await;
+                    return Err(CommandError::StateConflict);
+                }
+                let _ = record_failure(
+                    store,
+                    Some(identity),
+                    registration.side_effect,
+                    "FORGE.COMMAND.COMMIT_OUTCOME_UNKNOWN",
+                    false,
+                    registration.side_effect != SideEffectClass::Pure,
+                )
+                .await;
+                return Err(CommandError::State(error));
+            }
+        }
+        let mut event_ids = durable_event_ids;
+        if let Some(event_bus) = self.event_bus.as_ref() {
+            for event in output.pending_events.iter().filter(|event| {
+                matches!(
+                    event.class,
+                    EventClass::DurableLocal | EventClass::Integration | EventClass::AuditEvidence
+                )
+            }) {
+                let _ = event_bus.publish_committed(event.clone());
+            }
+            for event in ephemeral_events {
+                if let Ok(receipt) = event_bus.publish_ephemeral(event) {
+                    event_ids.push(receipt.event_id);
+                }
+            }
         }
         Ok(CommandOutcome {
             value: Some(output.value),
@@ -635,20 +821,27 @@ fn idempotency_identity(
         IdempotencyMode::None => return Ok(None),
     };
     let bytes = serde_json::to_vec(&(
-        request.principal_id.as_str(),
-        request.contract_id.as_str(),
-        request.contract_version,
-        key,
-        input_fingerprint,
-        request.config_fingerprint.as_str(),
-        request.capability_snapshot_fingerprint.as_str(),
-        request.dependency_graph_fingerprint.as_str(),
-        request.toolchain_fingerprint.as_str(),
-        request.deterministic_seed,
-        registration.contract.fingerprint().value.as_str(),
-        registration.idempotency,
-        registration.side_effect,
-        &request.state_guard,
+        (
+            request.principal_id.as_str(),
+            request.authorization_scope.as_str(),
+            request.resource_id.as_str(),
+            request.run_id.as_str(),
+            request.contract_id.as_str(),
+            request.contract_version,
+            key,
+            input_fingerprint,
+            request.config_fingerprint.as_str(),
+        ),
+        (
+            request.capability_snapshot_fingerprint.as_str(),
+            request.dependency_graph_fingerprint.as_str(),
+            request.toolchain_fingerprint.as_str(),
+            request.deterministic_seed,
+            registration.contract.fingerprint().value.as_str(),
+            registration.idempotency,
+            registration.side_effect,
+            &request.state_guard,
+        ),
     ))
     .map_err(|_| CommandError::InvalidRequest)?;
     Ok(Some(blake3::hash(&bytes).to_hex().to_string()))
@@ -731,6 +924,46 @@ fn valid_token(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
 }
 
+fn validate_host_claims(claims: &HostAuthorizationClaims) -> Result<(), CommandError> {
+    if !valid_token(&claims.decision_id)
+        || !valid_token(&claims.subject)
+        || !valid_token(&claims.action)
+        || !valid_token(&claims.scope)
+        || !valid_token(&claims.resource_id)
+        || !valid_token(&claims.run_id)
+        || claims.expires_at_ms <= claims.valid_from_ms
+        || claims.expires_at_ms.saturating_sub(claims.valid_from_ms) > HOST_DECISION_MAX_TTL_MS
+        || claims.permissions.len() > 256
+        || claims
+            .permissions
+            .iter()
+            .any(|permission| !valid_permission(permission))
+    {
+        return Err(CommandError::InvalidRequest);
+    }
+    Ok(())
+}
+
+fn host_time_ms() -> Result<u64, CommandError> {
+    let value = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| CommandError::InvalidRequest)?
+        .as_millis();
+    u64::try_from(value).map_err(|_| CommandError::InvalidRequest)
+}
+
+fn constant_time_hex_eq(left: &str, right: &str) -> bool {
+    if left.len() != 64 || right.len() != 64 {
+        return false;
+    }
+    left.bytes()
+        .zip(right.bytes())
+        .fold(0_u8, |difference, (left, right)| {
+            difference | left.to_ascii_lowercase() ^ right.to_ascii_lowercase()
+        })
+        == 0
+}
+
 fn valid_permission(value: &str) -> bool {
     valid_token(value) && value.contains('.')
 }
@@ -765,6 +998,47 @@ mod tests {
         blake3::hash(value.as_bytes()).to_hex().to_string()
     }
 
+    fn trusted_bus(maximum_handlers: usize) -> (CommandBus, HostDecisionSigner) {
+        let key = [0x5a; 32];
+        (
+            CommandBus::with_host_decision_verifier(
+                maximum_handlers,
+                HostDecisionVerifier::new(key),
+            )
+            .expect("host-verified command bus"),
+            HostDecisionSigner::new(key),
+        )
+    }
+
+    fn decision(
+        signer: &HostDecisionSigner,
+        request: &CommandRequest,
+        decision_id: &str,
+        permissions: BTreeSet<String>,
+    ) -> HostAuthorizationDecision {
+        let claims = claims_for(request, decision_id, permissions);
+        signer.sign(claims).expect("signed host decision")
+    }
+
+    fn claims_for(
+        request: &CommandRequest,
+        decision_id: &str,
+        permissions: BTreeSet<String>,
+    ) -> HostAuthorizationClaims {
+        let now = host_time_ms().expect("clock");
+        HostAuthorizationClaims {
+            decision_id: decision_id.into(),
+            subject: request.principal_id.clone(),
+            action: request.contract_id.to_string(),
+            scope: request.authorization_scope.clone(),
+            resource_id: request.resource_id.clone(),
+            run_id: request.run_id.clone(),
+            valid_from_ms: now.saturating_sub(1_000),
+            expires_at_ms: now.saturating_add(60_000),
+            permissions,
+        }
+    }
+
     fn registration(mode: IdempotencyMode, side_effect: SideEffectClass) -> CommandRegistration {
         CommandRegistration {
             contract: Arc::new(ValidatedContract::compile(ContractDefinition {
@@ -784,6 +1058,9 @@ mod tests {
         CommandRequest {
             command_id: "cmd-1".into(),
             principal_id: "user-1".into(),
+            authorization_scope: "scope.project".into(),
+            resource_id: "project-a".into(),
+            run_id: "run-001".into(),
             contract_id: ContractId::new("forge.command.set-state").expect("id"),
             contract_version: ContractVersion::new(1, 0, 0),
             idempotency_key: Some("caller-key-1".into()),
@@ -800,10 +1077,118 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn host_authorization_rejects_forgery_expiry_replay_revocation_and_scope_mismatch() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let store = ForgeStateStore::open(root.path()).await.expect("store");
+        let (bus, signer) = trusted_bus(2);
+        let called = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let called_handler = Arc::clone(&called);
+        bus.register(
+            registration(IdempotencyMode::CallerKeyed, SideEffectClass::LocalMutation),
+            Arc::new(move |_context, payload| {
+                called_handler.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                Box::pin(async move {
+                    Ok(HandlerOutput {
+                        value: payload,
+                        commit_evidence_fingerprint: Some(digest("authorized")),
+                        pending_events: vec![],
+                        state_update: None,
+                    })
+                })
+            }),
+        )
+        .expect("register");
+        bus.seal();
+        let request = request();
+        let permissions: BTreeSet<String> = ["state.write".to_owned()].into_iter().collect();
+        macro_rules! invoke {
+            ($authorization:expr) => {
+                bus.execute(
+                    &store,
+                    request.clone(),
+                    $authorization,
+                    CancellationToken::new(),
+                    Deadline::after(std::time::Duration::from_secs(2)),
+                    None,
+                )
+                .await
+            };
+        }
+
+        let valid = decision(&signer, &request, "decision.valid", permissions.clone());
+        let mut forged = valid.clone();
+        forged.mac = "0".repeat(64);
+        assert!(matches!(
+            invoke!(&forged),
+            Err(CommandError::PermissionDenied)
+        ));
+
+        let now = host_time_ms().expect("clock");
+        let mut expired_claims = claims_for(&request, "decision.expired", permissions.clone());
+        expired_claims.valid_from_ms = now.saturating_sub(60_000);
+        expired_claims.expires_at_ms = now.saturating_sub(30_000);
+        let expired = signer.sign(expired_claims).expect("sign expired claims");
+        assert!(matches!(
+            invoke!(&expired),
+            Err(CommandError::PermissionDenied)
+        ));
+
+        let mut future_claims = claims_for(&request, "decision.future", permissions.clone());
+        future_claims.valid_from_ms = now.saturating_add(30_000);
+        future_claims.expires_at_ms = now.saturating_add(60_000);
+        let future = signer.sign(future_claims).expect("sign future claims");
+        assert!(matches!(
+            invoke!(&future),
+            Err(CommandError::PermissionDenied)
+        ));
+
+        for (decision_id, mismatch) in [
+            ("decision.cross_scope", "scope"),
+            ("decision.cross_resource", "resource"),
+            ("decision.cross_run", "run"),
+            ("decision.cross_action", "action"),
+            ("decision.cross_subject", "subject"),
+        ] {
+            let mut claims = claims_for(&request, decision_id, permissions.clone());
+            match mismatch {
+                "scope" => claims.scope = "scope.other-project".into(),
+                "resource" => claims.resource_id = "project.other".into(),
+                "run" => claims.run_id = "run.other".into(),
+                "action" => claims.action = "forge.command.delete-state".into(),
+                "subject" => claims.subject = "user.other".into(),
+                _ => unreachable!(),
+            }
+            let authorization = signer.sign(claims).expect("sign mismatch claims");
+            assert!(matches!(
+                invoke!(&authorization),
+                Err(CommandError::PermissionDenied)
+            ));
+        }
+
+        let revoked = decision(&signer, &request, "decision.revoked", permissions.clone());
+        store
+            .revoke_host_authorization_decision(&revoked.claims.decision_id)
+            .await
+            .expect("revoke decision");
+        assert!(matches!(
+            invoke!(&revoked),
+            Err(CommandError::PermissionDenied)
+        ));
+
+        let replayed = decision(&signer, &request, "decision.replayed", permissions);
+        invoke!(&replayed).expect("first use of authorization");
+        assert!(matches!(
+            invoke!(&replayed),
+            Err(CommandError::PermissionDenied)
+        ));
+        assert_eq!(called.load(std::sync::atomic::Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
     async fn permission_contract_and_durable_idempotency_precede_side_effect_execution() {
         let root = tempfile::tempdir().expect("temp dir");
         let store = ForgeStateStore::open(root.path()).await.expect("store");
-        let bus = CommandBus::new(4).expect("bus");
+        let (bus, signer) = trusted_bus(4);
         let called = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let called_handler = Arc::clone(&called);
         bus.register(
@@ -822,25 +1207,32 @@ mod tests {
         )
         .expect("register");
         bus.seal();
-        let permissions = ["state.write".to_owned()].into_iter().collect();
-        let authorization =
-            AuthorizationContext::from_trusted_host("user-1", permissions).expect("auth");
+        let permissions: BTreeSet<String> = ["state.write".to_owned()].into_iter().collect();
+        let first_request = request();
+        let first_authorization = decision(
+            &signer,
+            &first_request,
+            "decision.first",
+            permissions.clone(),
+        );
         let first = bus
             .execute(
                 &store,
-                request(),
-                &authorization,
+                first_request.clone(),
+                &first_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(2)),
                 None,
             )
             .await
             .expect("first execution");
+        let replay_authorization =
+            decision(&signer, &first_request, "decision.replay", permissions);
         let replay = bus
             .execute(
                 &store,
-                request(),
-                &authorization,
+                first_request,
+                &replay_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(2)),
                 None,
@@ -856,7 +1248,7 @@ mod tests {
     async fn side_effects_without_idempotency_and_missing_permissions_are_rejected() {
         let root = tempfile::tempdir().expect("temp dir");
         let store = ForgeStateStore::open(root.path()).await.expect("store");
-        let bus = CommandBus::new(4).expect("bus");
+        let (bus, signer) = trusted_bus(4);
         let handler: CommandHandler = Arc::new(|_context, _payload| {
             Box::pin(async {
                 Ok(HandlerOutput {
@@ -889,12 +1281,17 @@ mod tests {
         )
         .expect("register");
         bus.seal();
-        let authorization =
-            AuthorizationContext::from_trusted_host("user-1", BTreeSet::new()).expect("auth");
+        let rejected_request = request();
+        let authorization = decision(
+            &signer,
+            &rejected_request,
+            "decision.denied",
+            BTreeSet::new(),
+        );
         assert!(matches!(
             bus.execute(
                 &store,
-                request(),
+                rejected_request,
                 &authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(1)),
@@ -909,7 +1306,7 @@ mod tests {
     async fn only_a_declared_pure_retryable_failure_can_return_to_in_flight() {
         let root = tempfile::tempdir().expect("temp dir");
         let store = ForgeStateStore::open(root.path()).await.expect("store");
-        let bus = CommandBus::new(4).expect("bus");
+        let (bus, signer) = trusted_bus(4);
         let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let handler_attempts = Arc::clone(&attempts);
         bus.register(
@@ -936,16 +1333,19 @@ mod tests {
         )
         .expect("register");
         bus.seal();
-        let authorization = AuthorizationContext::from_trusted_host(
-            "user-1",
-            ["state.write".to_owned()].into_iter().collect(),
-        )
-        .expect("auth");
+        let permissions: BTreeSet<String> = ["state.write".to_owned()].into_iter().collect();
+        let first_request = request();
+        let first_authorization = decision(
+            &signer,
+            &first_request,
+            "decision.retry.1",
+            permissions.clone(),
+        );
         assert!(matches!(
             bus.execute(
                 &store,
-                request(),
-                &authorization,
+                first_request.clone(),
+                &first_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(1)),
                 None
@@ -953,11 +1353,13 @@ mod tests {
             .await,
             Err(CommandError::HandlerFailure(_))
         ));
+        let retry_authorization =
+            decision(&signer, &first_request, "decision.retry.2", permissions);
         let outcome = bus
             .execute(
                 &store,
-                request(),
-                &authorization,
+                first_request,
+                &retry_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(1)),
                 None,
@@ -972,7 +1374,7 @@ mod tests {
     async fn sensitive_results_are_not_saved_as_replayable_payloads() {
         let root = tempfile::tempdir().expect("temp dir");
         let store = ForgeStateStore::open(root.path()).await.expect("store");
-        let bus = CommandBus::new(4).expect("bus");
+        let (bus, signer) = trusted_bus(4);
         bus.register(
             registration(IdempotencyMode::CallerKeyed, SideEffectClass::Pure),
             Arc::new(|_context, _payload| {
@@ -988,17 +1390,19 @@ mod tests {
         )
         .expect("register");
         bus.seal();
-        let authorization = AuthorizationContext::from_trusted_host(
-            "user-1",
-            ["state.write".to_owned()].into_iter().collect(),
-        )
-        .expect("auth");
         let mut request = request();
         request.sensitivity = SensitivityClass::Sensitive;
+        let permissions: BTreeSet<String> = ["state.write".to_owned()].into_iter().collect();
+        let first_authorization = decision(
+            &signer,
+            &request,
+            "decision.sensitive.1",
+            permissions.clone(),
+        );
         bus.execute(
             &store,
             request.clone(),
-            &authorization,
+            &first_authorization,
             CancellationToken::new(),
             Deadline::after(std::time::Duration::from_secs(1)),
             None,
@@ -1023,11 +1427,12 @@ mod tests {
             .expect("record");
         let serialized = serde_json::to_string(&record.result).expect("encode receipt");
         assert!(!serialized.contains("do-not-persist"));
+        let replay_authorization = decision(&signer, &request, "decision.sensitive.2", permissions);
         let replay = bus
             .execute(
                 &store,
                 request,
-                &authorization,
+                &replay_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(1)),
                 None,
@@ -1042,7 +1447,7 @@ mod tests {
     async fn state_transition_guard_commits_once_and_rejects_a_stale_absent_version() {
         let root = tempfile::tempdir().expect("temp dir");
         let store = ForgeStateStore::open(root.path()).await.expect("store");
-        let bus = CommandBus::new(4).expect("bus");
+        let (bus, signer) = trusted_bus(4);
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let handler_calls = Arc::clone(&calls);
         bus.register(
@@ -1064,11 +1469,6 @@ mod tests {
         )
         .expect("register");
         bus.seal();
-        let authorization = AuthorizationContext::from_trusted_host(
-            "user-1",
-            ["state.write".to_owned()].into_iter().collect(),
-        )
-        .expect("auth");
         let mut request = request();
         request.idempotency_key = None;
         request.state_guard = Some(StateTransitionGuard {
@@ -1076,22 +1476,27 @@ mod tests {
             key: "settings".into(),
             expected_version: None,
         });
+        let permissions: BTreeSet<String> = ["state.write".to_owned()].into_iter().collect();
+        let first_authorization =
+            decision(&signer, &request, "decision.state.1", permissions.clone());
         let first = bus
             .execute(
                 &store,
                 request.clone(),
-                &authorization,
+                &first_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(1)),
                 None,
             )
             .await
             .expect("state transition");
+        let replay_authorization =
+            decision(&signer, &request, "decision.state.2", permissions.clone());
         let replay = bus
             .execute(
                 &store,
                 request.clone(),
-                &authorization,
+                &replay_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(1)),
                 None,
@@ -1110,11 +1515,12 @@ mod tests {
         );
 
         request.payload = json!({"value": 3});
+        let conflict_authorization = decision(&signer, &request, "decision.state.3", permissions);
         assert!(matches!(
             bus.execute(
                 &store,
                 request,
-                &authorization,
+                &conflict_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(1)),
                 None,
@@ -1138,7 +1544,14 @@ mod tests {
         let event_bus = Arc::new(
             EventBus::new([(crate::events::EventLane::DurableDomain, 8)]).expect("event bus"),
         );
-        let bus = CommandBus::with_event_bus(4, Arc::clone(&event_bus)).expect("command bus");
+        let key = [0x5a; 32];
+        let signer = HostDecisionSigner::new(key);
+        let bus = CommandBus::with_event_bus_and_host_decision_verifier(
+            4,
+            Arc::clone(&event_bus),
+            HostDecisionVerifier::new(key),
+        )
+        .expect("command bus");
         let mut registration =
             registration(IdempotencyMode::CallerKeyed, SideEffectClass::LocalMutation);
         registration.emits_events = true;
@@ -1170,27 +1583,32 @@ mod tests {
         )
         .expect("register");
         bus.seal();
-        let authorization = AuthorizationContext::from_trusted_host(
-            "user-1",
-            ["state.write".to_owned()].into_iter().collect(),
-        )
-        .expect("auth");
+        let first_request = request();
+        let permissions: BTreeSet<String> = ["state.write".to_owned()].into_iter().collect();
+        let first_authorization = decision(
+            &signer,
+            &first_request,
+            "decision.event.1",
+            permissions.clone(),
+        );
         let first = bus
             .execute(
                 &store,
-                request(),
-                &authorization,
+                first_request.clone(),
+                &first_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(1)),
                 None,
             )
             .await
             .expect("command");
+        let replay_authorization =
+            decision(&signer, &first_request, "decision.event.2", permissions);
         let replay = bus
             .execute(
                 &store,
-                request(),
-                &authorization,
+                first_request,
+                &replay_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(1)),
                 None,

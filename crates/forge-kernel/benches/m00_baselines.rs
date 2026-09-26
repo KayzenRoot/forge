@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::hint::black_box;
+use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -18,18 +19,20 @@ use forge_kernel::causality::{
     CausalityGraph, ChangeKind, EdgeConfidence, EdgeKind, GraphEdge, GraphNode, NodeKind,
 };
 use forge_kernel::commands::{
-    AuthorizationContext, CommandBus, CommandContext, CommandRegistration, CommandRequest,
-    HandlerOutput, IdempotencyMode, SensitivityClass,
+    CommandBus, CommandContext, CommandRegistration, CommandRequest, HandlerOutput,
+    HostAuthorizationClaims, HostDecisionSigner, HostDecisionVerifier, IdempotencyMode,
+    SensitivityClass,
 };
 use forge_kernel::events::{EventBus, EventClass, EventEnvelope, EventLane};
 use forge_kernel::health::{HealthRegistry, ProbeObservation, ProbePolicy};
 use forge_kernel::proof::{
-    ChangeAssessment, ProofGraph, ProofKind, ProofNode, ProofObligation, ProofObligationCompiler,
-    ProofOutcome, ProofRisk,
+    ChangeAssessment, ProofBackendClaims, ProofBackendSigner, ProofBackendVerifier, ProofGraph,
+    ProofKind, ProofNode, ProofObligationCompiler, ProofOutcome,
 };
 use forge_kernel::resolver::{ResolutionRequest, resolve};
 use forge_kernel::resources::{ResourceGovernor, ResourceVector};
 use forge_kernel::runtime::{CancellationToken, Deadline, KernelRuntime, RuntimeConfig};
+use forge_kernel::scheduler::{FairScheduler, Lane};
 use forge_kernel::telemetry::HotPathRegistry;
 use forge_state::{
     ForgeStateStore, PersistedResourceUsageRecord, PersistedResourceVector,
@@ -84,9 +87,9 @@ fn main() {
             capability_id: "bench.route".into(),
             version: "1.0.0".into(),
             contract_id: "bench.payload".into(),
-            evidence: EvidenceLevel::ConformancePassed,
-            health: HealthState::Ready,
-            health_observed_at_ms: 100,
+            evidence: EvidenceLevel::Declared,
+            health: HealthState::Unknown,
+            health_observed_at_ms: 0,
             health_max_age_ms: 10_000,
             privacy: PrivacyClass::Internal,
             side_effect: SideEffectClass::Pure,
@@ -109,7 +112,7 @@ fn main() {
         require_determinism: true,
         allow_remote: false,
         now_ms: 101,
-        minimum_evidence: EvidenceLevel::ConformancePassed,
+        minimum_evidence: EvidenceLevel::Declared,
     };
     measure("capability_resolution_one_candidate", 100_000, || {
         black_box(resolve(&snapshot, &request));
@@ -122,9 +125,9 @@ fn main() {
                 capability_id: "bench.route".into(),
                 version: "1.0.0".into(),
                 contract_id: "bench.payload".into(),
-                evidence: EvidenceLevel::ConformancePassed,
-                health: HealthState::Ready,
-                health_observed_at_ms: 100,
+                evidence: EvidenceLevel::Declared,
+                health: HealthState::Unknown,
+                health_observed_at_ms: 0,
                 health_max_age_ms: 10_000,
                 privacy: PrivacyClass::Internal,
                 side_effect: SideEffectClass::Pure,
@@ -139,36 +142,74 @@ fn main() {
         black_box(registry.snapshot().expect("snapshot"));
     });
 
-    let mut graph = CausalityGraph::new();
-    for index in 0..100 {
-        graph
-            .add_node(GraphNode {
-                id: format!("module.{index}"),
-                kind: if index == 99 {
-                    NodeKind::Test
-                } else {
-                    NodeKind::Module
-                },
-            })
-            .expect("graph node");
-    }
-    for index in 0..99 {
-        graph
-            .add_edge(GraphEdge {
-                from: format!("module.{index}"),
-                to: format!("module.{}", index + 1),
-                kind: EdgeKind::Requires,
-                propagation: [ChangeKind::Implementation].into_iter().collect(),
-                confidence: EdgeConfidence::Proven,
-            })
-            .expect("graph edge");
-    }
-    let graph_snapshot = graph.snapshot().expect("graph snapshot");
-    measure("change_cone_100_node_chain", 20_000, || {
-        black_box(
-            graph_snapshot.compute_change_cone(&["module.0".into()], ChangeKind::Implementation),
+    for node_count in [100_usize, 1_000, 10_000] {
+        let mut graph = CausalityGraph::new();
+        for index in 0..node_count {
+            graph
+                .add_node(GraphNode {
+                    id: format!("module.{index}"),
+                    kind: if index + 1 == node_count {
+                        NodeKind::Test
+                    } else {
+                        NodeKind::Module
+                    },
+                })
+                .expect("graph node");
+        }
+        for index in 0..node_count.saturating_sub(1) {
+            graph
+                .add_edge(GraphEdge {
+                    from: format!("module.{index}"),
+                    to: format!("module.{}", index + 1),
+                    kind: EdgeKind::Requires,
+                    propagation: [ChangeKind::Implementation].into_iter().collect(),
+                    confidence: EdgeConfidence::Proven,
+                })
+                .expect("graph edge");
+        }
+        let graph_snapshot = graph.snapshot().expect("graph snapshot");
+        let iterations = match node_count {
+            100 => 4_000,
+            1_000 => 500,
+            _ => 100,
+        };
+        measure(
+            &format!("change_cone_{node_count}_node_chain"),
+            iterations,
+            || {
+                black_box(
+                    graph_snapshot
+                        .compute_change_cone(&["module.0".into()], ChangeKind::Implementation),
+                );
+            },
         );
-    });
+    }
+
+    for owner_count in [100, 1_000, 10_000] {
+        let mut samples = Vec::new();
+        for _ in 0..5 {
+            let scheduler = FairScheduler::new([(Lane::Normal, owner_count * 2, 2)])
+                .expect("bounded scheduler");
+            for owner in 0..owner_count {
+                scheduler
+                    .enqueue(format!("owner.{owner}"), Lane::Normal, 1_u8)
+                    .expect("first owner task");
+                scheduler
+                    .enqueue(format!("owner.{owner}"), Lane::Normal, 2_u8)
+                    .expect("second owner task");
+            }
+            let started = Instant::now();
+            for _ in 0..owner_count * 2 {
+                black_box(scheduler.next(Lane::Normal).expect("fair scheduler task"));
+            }
+            samples.push(started.elapsed());
+        }
+        report_samples(
+            &format!("scheduler_owner_rotation_{owner_count}"),
+            owner_count * 2,
+            samples,
+        );
+    }
 
     let governor = ResourceGovernor::new(ResourceVector {
         cpu_millis: 100,
@@ -201,38 +242,87 @@ fn main() {
             .expect("child lease");
         black_box(child.remaining());
     });
-    let proof_head = blake3::hash(b"m00 bench head").to_hex().to_string();
     let proof_compiler = ProofObligationCompiler;
-    let assessment = ChangeAssessment {
-        exact_head_sha: proof_head,
-        risk: ProofRisk::Low,
-        impact_unknown: false,
-        obligations: vec![ProofObligation {
-            obligation_id: "bench.contract".into(),
-            required_kinds: [ProofKind::Contract].into_iter().collect(),
-        }],
-    };
+    let changed_path = "crates/bench.rs";
+    let mut proof_causality = CausalityGraph::new();
+    proof_causality
+        .add_node(GraphNode {
+            id: changed_path.into(),
+            kind: NodeKind::Module,
+        })
+        .expect("proof graph seed");
+    let base_commit = git_commit("HEAD^");
+    let exact_head = git_commit("HEAD");
+    let assessment = ChangeAssessment::from_git(
+        ".",
+        &base_commit,
+        &exact_head,
+        None,
+        Some(proof_causality.snapshot().expect("proof graph snapshot")),
+    )
+    .expect("exact Git bench change assessment");
+    measure("git_exact_change_assessment", 10, || {
+        black_box(
+            ChangeAssessment::from_git(".", &base_commit, &exact_head, None, None)
+                .expect("exact Git assessment"),
+        );
+    });
     measure("proof_obligation_compile", 20_000, || {
         black_box(proof_compiler.compile(assessment.clone()).expect("compile"));
     });
     let compiled_obligations = proof_compiler
         .compile(assessment.clone())
         .expect("compiled obligations");
-    let mut proof_graph = ProofGraph::default();
-    proof_graph
-        .add(ProofNode {
-            proof_id: "bench.contract.proof".into(),
+    let proof_id = "bench.contract.proof";
+    let proof_fingerprint = blake3::hash(b"bench proof").to_hex().to_string();
+    let proof_inputs = blake3::hash(b"bench inputs").to_hex().to_string();
+    let proof_environment = blake3::hash(b"bench environment").to_hex().to_string();
+    let proof_backend_run = "backend.bench.001";
+    let proof_obligations = compiled_obligations
+        .obligations
+        .iter()
+        .filter(|obligation| obligation.required_kinds.contains(&ProofKind::Contract))
+        .map(|obligation| obligation.obligation_id.clone())
+        .collect::<Vec<_>>();
+    let proof_node = ProofNode {
+        proof_id: proof_id.into(),
+        kind: ProofKind::Contract,
+        outcome: ProofOutcome::Passed,
+        fingerprint: proof_fingerprint.clone(),
+        head_sha: assessment.exact_head_sha().into(),
+        dependencies: Vec::new(),
+        obligation_ids: proof_obligations.clone(),
+        executor_session_id: None,
+        reviewer_session_id: None,
+        metadata: json!({
+            "backendRunId": proof_backend_run,
+            "changeSetFingerprint": compiled_obligations.change_set_fingerprint.clone(),
+            "inputsFingerprint": proof_inputs.clone(),
+            "environmentFingerprint": proof_environment.clone(),
+        }),
+    };
+    let key = [0x6a; 32];
+    let receipt = ProofBackendSigner::new(key)
+        .sign(ProofBackendClaims {
+            backend_run_id: proof_backend_run.into(),
+            proof_id: proof_id.into(),
             kind: ProofKind::Contract,
-            outcome: ProofOutcome::Passed,
-            fingerprint: blake3::hash(b"bench proof").to_hex().to_string(),
-            head_sha: assessment.exact_head_sha.clone(),
+            proof_fingerprint,
+            git_object_format: assessment.git_object_format().into(),
+            exact_head_sha: assessment.exact_head_sha().into(),
+            change_set_fingerprint: compiled_obligations.change_set_fingerprint.clone(),
             dependencies: Vec::new(),
-            obligation_ids: vec!["bench.contract".into()],
+            obligation_ids: proof_obligations,
+            inputs_fingerprint: proof_inputs,
+            environment_fingerprint: proof_environment,
             executor_session_id: None,
             reviewer_session_id: None,
-            metadata: json!({"producer": "m00-baseline"}),
         })
-        .expect("proof node");
+        .expect("proof backend receipt");
+    let mut proof_graph = ProofGraph::default();
+    proof_graph
+        .add_verified(proof_node, receipt, &ProofBackendVerifier::new(key))
+        .expect("verified proof node");
     measure("proof_minimal_selection", 20_000, || {
         black_box(
             proof_graph
@@ -402,7 +492,15 @@ fn main() {
                 );
                 black_box(index);
             }
-            usage_samples.push(start.elapsed());
+            let elapsed = start.elapsed();
+            report_cardinality_sample(
+                "resource_usage_durable",
+                sample * 200,
+                (sample + 1) * 200,
+                200,
+                elapsed,
+            );
+            usage_samples.push(elapsed);
         }
         assert_eq!(usage_boot.consumed_resource_budget().tokens, 1_000);
         report_samples("resource_usage_durable", 200, usage_samples);
@@ -512,7 +610,19 @@ fn main() {
         }
         report_samples("durable_event_outbox", 200, event_samples);
 
-        let command_bus = CommandBus::new(1).expect("command bus");
+        // Earlier measurements can outlive the 60-second store owner lease.
+        // Reopen the same database before the command workload so its active
+        // owner and receipt measurements start from a current lease.
+        drop(store);
+        let store = ForgeStateStore::open(root.path())
+            .await
+            .expect("command benchmark state store");
+
+        let auth_key = [0x5a; 32];
+        let host_signer = HostDecisionSigner::new(auth_key);
+        let command_bus =
+            CommandBus::with_host_decision_verifier(1, HostDecisionVerifier::new(auth_key))
+                .expect("command bus");
         command_bus
             .register(
                 CommandRegistration {
@@ -537,8 +647,6 @@ fn main() {
             )
             .expect("register command");
         command_bus.seal();
-        let authorization = AuthorizationContext::from_trusted_host("bench", BTreeSet::new())
-            .expect("authorization");
         let contract_id = ContractId::new("bench.payload").expect("contract id");
         let fingerprint = |name: &str| blake3::hash(name.as_bytes()).to_hex().to_string();
         let mut command_samples = Vec::new();
@@ -551,6 +659,9 @@ fn main() {
                 let request = CommandRequest {
                     command_id: format!("bench.command.{index}"),
                     principal_id: "bench".into(),
+                    authorization_scope: "scope.bench".into(),
+                    resource_id: "bench.resource".into(),
+                    run_id: "bench.run".into(),
                     contract_id: contract_id.clone(),
                     contract_version: ContractVersion::new(1, 0, 0),
                     idempotency_key: Some(format!("bench.key.{index}")),
@@ -564,6 +675,23 @@ fn main() {
                     state_guard: None,
                     payload: json!({"value": index}),
                 };
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("clock")
+                    .as_millis() as u64;
+                let authorization = host_signer
+                    .sign(HostAuthorizationClaims {
+                        decision_id: format!("bench.decision.{index}"),
+                        subject: request.principal_id.clone(),
+                        action: request.contract_id.to_string(),
+                        scope: request.authorization_scope.clone(),
+                        resource_id: request.resource_id.clone(),
+                        run_id: request.run_id.clone(),
+                        valid_from_ms: now_ms.saturating_sub(1_000),
+                        expires_at_ms: now_ms.saturating_add(60_000),
+                        permissions: BTreeSet::new(),
+                    })
+                    .expect("host authorization decision");
                 black_box(
                     command_bus
                         .execute(
@@ -619,6 +747,18 @@ fn main() {
     });
 }
 
+fn git_commit(revision: &str) -> String {
+    let output = Command::new("git")
+        .args(["rev-parse", "--verify", "--end-of-options", revision])
+        .output()
+        .expect("invoke Git to resolve a benchmark commit");
+    assert!(output.status.success(), "Git failed to resolve {revision}");
+    String::from_utf8(output.stdout)
+        .expect("Git commit ID is UTF-8")
+        .trim()
+        .to_owned()
+}
+
 fn measure(name: &str, iterations: usize, mut operation: impl FnMut()) {
     let sample_count = 5;
     let iterations_per_sample = iterations.div_ceil(sample_count).max(1);
@@ -645,5 +785,19 @@ fn report_samples(name: &str, iterations_per_sample: usize, samples: Vec<Duratio
     println!(
         "benchmark={name} samples={} iterations_per_sample={iterations_per_sample} median_ns_per_operation={median} min_ns_per_operation={min} max_ns_per_operation={max}",
         nanos_per_operation.len()
+    );
+}
+
+fn report_cardinality_sample(
+    name: &str,
+    cardinality_start: usize,
+    cardinality_end: usize,
+    operations: usize,
+    elapsed: Duration,
+) {
+    let elapsed_nanos = elapsed.as_nanos();
+    println!(
+        "benchmark_sample={name} cardinality_start={cardinality_start} cardinality_end={cardinality_end} operations={operations} elapsed_ns={elapsed_nanos} ns_per_operation={}",
+        elapsed_nanos / operations.max(1) as u128
     );
 }

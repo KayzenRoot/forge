@@ -73,11 +73,34 @@ pub struct CapabilityDescriptor {
     pub locality: Locality,
 }
 
+/// Immutable capability data produced by [`CapabilityRegistry::snapshot`].
+///
+/// ```compile_fail
+/// let _forged = forge_kernel::capabilities::CapabilitySnapshot {
+///     epoch: 1,
+///     digest: String::new(),
+///     entries: std::collections::BTreeMap::new(),
+/// };
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CapabilitySnapshot {
-    pub epoch: u64,
-    pub digest: String,
-    pub entries: BTreeMap<String, CapabilityDescriptor>,
+    pub(crate) epoch: u64,
+    pub(crate) digest: String,
+    pub(crate) entries: BTreeMap<String, CapabilityDescriptor>,
+}
+
+impl CapabilitySnapshot {
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
+    pub fn digest(&self) -> &str {
+        &self.digest
+    }
+
+    pub fn entries(&self) -> &BTreeMap<String, CapabilityDescriptor> {
+        &self.entries
+    }
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
@@ -90,6 +113,8 @@ pub enum CapabilityError {
     NotFound,
     #[error("evidence promotion must be monotonic or explicitly quarantined")]
     EvidenceRegression,
+    #[error("capability health or provenance requires trusted runtime evidence")]
+    UnverifiedEvidence,
     #[error("capability snapshot could not be serialized")]
     SnapshotSerialization,
 }
@@ -114,6 +139,12 @@ impl CapabilityRegistry {
     }
 
     pub fn register(&self, descriptor: CapabilityDescriptor) -> Result<(), CapabilityError> {
+        if descriptor.evidence != EvidenceLevel::Declared
+            || descriptor.health != HealthState::Unknown
+            || descriptor.health_observed_at_ms != 0
+        {
+            return Err(CapabilityError::UnverifiedEvidence);
+        }
         validate_descriptor(&descriptor)?;
         let mut entries = self
             .entries
@@ -133,6 +164,9 @@ impl CapabilityRegistry {
         health: HealthState,
         observed_at_ms: u64,
     ) -> Result<(), CapabilityError> {
+        if matches!(health, HealthState::Ready) {
+            return Err(CapabilityError::UnverifiedEvidence);
+        }
         let mut entries = self
             .entries
             .write()
@@ -155,6 +189,17 @@ impl CapabilityRegistry {
         id: &str,
         evidence: EvidenceLevel,
     ) -> Result<(), CapabilityError> {
+        if evidence != EvidenceLevel::Quarantined {
+            let entries = self
+                .entries
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let descriptor = entries.get(id).ok_or(CapabilityError::NotFound)?;
+            if descriptor.evidence == EvidenceLevel::Quarantined || evidence < descriptor.evidence {
+                return Err(CapabilityError::EvidenceRegression);
+            }
+            return Err(CapabilityError::UnverifiedEvidence);
+        }
         let mut entries = self
             .entries
             .write()
@@ -172,6 +217,53 @@ impl CapabilityRegistry {
         if evidence == EvidenceLevel::Quarantined {
             descriptor.health = HealthState::Quarantined;
         }
+        self.bump_epoch();
+        Ok(())
+    }
+
+    pub(crate) fn record_verified_runtime_evidence(
+        &self,
+        id: &str,
+        evidence: EvidenceLevel,
+        health: HealthState,
+        observed_at_ms: u64,
+    ) -> Result<(), CapabilityError> {
+        if !matches!(
+            evidence,
+            EvidenceLevel::ContractValidated
+                | EvidenceLevel::ConformancePassed
+                | EvidenceLevel::RuntimeVerified
+                | EvidenceLevel::Proven
+                | EvidenceLevel::Quarantined
+        ) || !matches!(
+            health,
+            HealthState::Ready
+                | HealthState::Degraded
+                | HealthState::NotReady
+                | HealthState::Unknown
+                | HealthState::Quarantined
+        ) {
+            return Err(CapabilityError::InvalidDescriptor);
+        }
+        let mut entries = self
+            .entries
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let descriptor = entries.get_mut(id).ok_or(CapabilityError::NotFound)?;
+        if descriptor.evidence == EvidenceLevel::Quarantined
+            && evidence != EvidenceLevel::Quarantined
+            || evidence != EvidenceLevel::Quarantined && evidence < descriptor.evidence
+            || observed_at_ms < descriptor.health_observed_at_ms
+        {
+            return Err(CapabilityError::EvidenceRegression);
+        }
+        descriptor.evidence = evidence;
+        descriptor.health = if evidence == EvidenceLevel::Quarantined {
+            HealthState::Quarantined
+        } else {
+            health
+        };
+        descriptor.health_observed_at_ms = observed_at_ms;
         self.bump_epoch();
         Ok(())
     }
@@ -270,9 +362,18 @@ mod tests {
             .register(descriptor("native.parse"))
             .expect("register capability");
         let old = registry.snapshot().expect("snapshot");
+        assert_eq!(
+            registry.promote_evidence("native.parse", EvidenceLevel::ConformancePassed),
+            Err(CapabilityError::UnverifiedEvidence)
+        );
         registry
-            .promote_evidence("native.parse", EvidenceLevel::ConformancePassed)
-            .expect("promotion");
+            .record_verified_runtime_evidence(
+                "native.parse",
+                EvidenceLevel::ConformancePassed,
+                HealthState::Ready,
+                10,
+            )
+            .expect("trusted promotion");
         let new = registry.snapshot().expect("snapshot");
         assert_eq!(
             old.entries["native.parse"].evidence,
@@ -303,6 +404,39 @@ mod tests {
         assert_eq!(
             registry.register(descriptor("../outside")),
             Err(CapabilityError::InvalidDescriptor)
+        );
+    }
+
+    #[test]
+    fn callers_cannot_self_assert_provenance_or_ready_health() {
+        let registry = CapabilityRegistry::new();
+        let mut asserted = descriptor("native.forged");
+        asserted.evidence = EvidenceLevel::Proven;
+        asserted.health = HealthState::Ready;
+        asserted.health_observed_at_ms = 10;
+        assert_eq!(
+            registry.register(asserted),
+            Err(CapabilityError::UnverifiedEvidence)
+        );
+
+        registry
+            .register(descriptor("native.runtime"))
+            .expect("declared capability");
+        assert_eq!(
+            registry.update_health("native.runtime", HealthState::Ready, 10),
+            Err(CapabilityError::UnverifiedEvidence)
+        );
+        registry
+            .record_verified_runtime_evidence(
+                "native.runtime",
+                EvidenceLevel::RuntimeVerified,
+                HealthState::Ready,
+                10,
+            )
+            .expect("verified readiness");
+        assert_eq!(
+            registry.snapshot().expect("snapshot").entries["native.runtime"].evidence,
+            EvidenceLevel::RuntimeVerified
         );
     }
 }

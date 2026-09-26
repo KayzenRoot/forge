@@ -150,6 +150,30 @@ ZDRP-05 remote telemetry/provider DNS blackhole.
 ZDRP-06 candidate upgrade/migration offline.
 All must produce deterministic evidence and bounded completion.
 
+### C03 executor coverage IDs
+
+The C03 correction runner executes all six named rows on each Windows and Linux job while outbound
+traffic is blocked. Its IDs make the correction request's required absence cases independently
+visible in CI output:
+
+| Executor ID | Case | Native diagnostics required | Canonical coverage |
+|---|---|---|---|
+| ZDRP-01 | Outbound network blocked | NATIVE_READY, local state integrity, readiness/capability/resource fingerprints | Fresh install, healthy restart, stale-owner recovery, and v2-to-v3 upgrade are separate subcases |
+| ZDRP-02 | DNS unavailable; telemetry/provider blackhole | Provider and remote telemetry report `not_configured`; bounded native readiness remains available | S21 ZDRP-05 |
+| ZDRP-03 | HIVE unavailable | HIVE reports `not_configured`; native readiness remains available | S21 ZDRP-04 |
+| ZDRP-04 | Core/Hades unavailable | Core and Hades report `not_configured`; native readiness remains available | S21 ZDRP-04 |
+| ZDRP-05 | IRIS unavailable | IRIS reports `not_configured`; native readiness remains available | S21 ZDRP-04 |
+| ZDRP-06 | LLM/provider unavailable | LLM and provider report `not_configured`; embeddings remain disabled | S21 ZDRP-05 |
+
+The CLI does not probe optional services before NATIVE_READY. `not_configured` is therefore an
+explicit native diagnostic, not a claim that a connector was contacted and failed. ZDRP-02 also
+checks that a reserved `.invalid` hostname cannot resolve within the bounded test probe. The Linux
+job blocks runner egress; the Windows job installs and verifies outbound block rules for both the
+Forge executable and Python scenario runner. With those rules active, the runner also attempts
+outbound TCP to public IPv4 and IPv6 endpoints and fails if either connection succeeds. Every ID
+runs on both operating systems; no opposite-OS step is counted. A local run without these firewall
+gates is useful for code behavior but is not offline-certification evidence.
+
 ## Anti-pattern gates
 Forbidden:
 - first-run schema/config download;
