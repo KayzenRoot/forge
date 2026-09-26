@@ -1,6 +1,6 @@
 # FGE-004-M00 Evidence Bundle — implementation candidate
 
-Status: CANDIDATE EVIDENCE; NOT AN APPROVAL OR CHECKPOINT PROMOTION. This bundle does not certify its own documentation revision.
+Status: CANDIDATE EVIDENCE; NOT AN APPROVAL OR CHECKPOINT PROMOTION. C03 exact-head CI and measured-performance checks passed; fresh independent assurance remains bound to the frozen package. This bundle does not certify its own documentation revision.
 
 ## Identity and authority
 
@@ -13,6 +13,13 @@ Status: CANDIDATE EVIDENCE; NOT AN APPROVAL OR CHECKPOINT PROMOTION. This bundle
 - The nine executable UADS PASS records belong to a pre-CD3 digest and do not certify CD3/CD4. `security-review` and `performance-check` remain pending, with four distinct assurance reviewer sessions missing. Historical failures `fail_0a0885d3ae84936c` and `fail_d24e593c9f468786` remain preserved. Do not treat visible role-cycling as independent review.
 - HIVE remains optional. Native Forge boot reports HIVE not configured and semantic embeddings disabled; no external model or embedding API is called.
 
+## C03 correction evidence (current overlay)
+
+- Corrected implementation candidate: `fda8969097320cdad9b8f92dffb4fddd8fc2424e`; tree `f6c4c21a7f5e910c85c6bf5844ddb3b294679e13`; baseline `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`. PR #9 is currently open, draft, and unmerged. Exact-head Actions run [36270900434](https://github.com/KayzenRoot/forge/actions/runs/36270900434) passed all four configured jobs, including Ubuntu and Windows blocked-egress doctor checks. This run does not certify a later evidence-only commit.
+- Source fingerprints: 68 manifest entries, zero mismatches on `fda8969097320cdad9b8f92dffb4fddd8fc2424e`; the final documentation revision will be re-bound and verified before the review package is frozen.
+- Performance: ten paired outer runs with five inner samples; 16/16 comparable workloads and all three scale checks passed. New or semantically changed workpaths have proposed candidate budgets only, with no external SLO approval implied. The first five-pair report failed two short workloads; it is preserved beside the passing ten-pair result and its interpretation is documented in [the performance report](../../../docs/PERFORMANCE-M00-CANDIDATE.md).
+- H1-H5 and ML1-ML7 correction and regression coverage are summarized in [C03 correction matrix](C03-CORRECTION-MATRIX.md). Four fresh, distinct native Codex reviewers must assess the same final frozen package digest; their reviewer results remain separate from this package snapshot.
+
 ## Candidate structure and changes
 
 - `forge-contracts`: contract IDs/versions, JSON Schema validation, typed errors and fingerprints.
@@ -24,7 +31,7 @@ Status: CANDIDATE EVIDENCE; NOT AN APPROVAL OR CHECKPOINT PROMOTION. This bundle
 
 ## Source inventory and performance
 
-Canonical source SHA-256 values are listed in [SOURCE-FINGERPRINTS.sha256](SOURCE-FINGERPRINTS.sha256). Toolchain: rustc 1.98.1 (`48a229ceaefd4985c50990b14116b6d856af0985`), target `x86_64-pc-windows-msvc`, LLVM 22.1.8. Hardware, five-sample benchmark results, cache counters and idle memory method are in [PERFORMANCE-M00-CANDIDATE.md](../../../docs/PERFORMANCE-M00-CANDIDATE.md).
+Canonical source SHA-256 values are listed in [SOURCE-FINGERPRINTS.sha256](SOURCE-FINGERPRINTS.sha256). Toolchain: rustc 1.98.1 (`48a229ceaefd4985c50990b14116b6d856af0985`), target `x86_64-pc-windows-msvc`, LLVM 22.1.8. Hardware and historical CD3 snapshot are followed by the C03 ten-pair budgeted comparison in [PERFORMANCE-M00-CANDIDATE.md](../../../docs/PERFORMANCE-M00-CANDIDATE.md). The repeated C03 JSON reports and their SHA-256 digests are preserved in the external correction package.
 
 ## IA1 source fingerprint integrity correction
 
@@ -58,7 +65,7 @@ Durable-accounting tests prove migration from schema v1 to v2, exact replay dedu
 - Owning package: source at `D:\Projetos Codex\uads`, exposed to the installed CLI by the `C:\Users\csn19\AppData\Roaming\npm\node_modules\uads` junction. Source starting head: `ad2e6c8ec8d416bf4c7d4b80d41fb24c63835699`; no UADS commit or push is authorized.
 - Bundle/schema is v0.11.0 while the adapter contract remains v0.10.0. Run phase and status derive the active assignment list; implement phase excludes reviewers; hidden execution capability must be runtime-proven before reviewer assignments or assurance handoff can be accepted.
 - Re-preparation previously compared the live refreshed repository index with the frozen specialist-selection digest, so an in-scope implementation edit was misclassified as stale planning. The adapter now keeps the live index in the bundle while validating selection against its frozen Work Order/Context Plan bindings; evaluation AD41 proves re-preparation after an edit, empty assignments in `verify`, and fail-closed `review` when hidden execution is unknown.
-- Local UADS gates passed: typecheck, build, 50 files / 415 tests, adapter evaluation (41/41), focused adapter tests (15/15), host execution tests (53/53), and installed Codex bundle preparation. The pre-CD3 Forge run's digest predates the CD3 candidate; after the CD3 commit, `uads verify --json` returned `no implementation change to verify` on the clean worktree and marked the run `blocked`. Its nine executable PASS records do not certify CD3/CD4, and the two reviewer gates remain pending. The review packet identifies the required distinct reviewers, and hidden execution capability remains `unknown`.
+- Local UADS gates passed: typecheck, build, 50 files / 415 tests, adapter evaluation (41/41), focused adapter tests (15/15), host execution tests (53/53), and installed Codex bundle preparation. The pre-CD3 Forge run's digest predates the CD3 candidate; after the CD3 commit, `uads verify --json` returned `no implementation change to verify` on the clean worktree and marked the run `blocked`. Its nine executable PASS records do not certify CD3/CD4, and the two reviewer gates remain pending. The historical UADS adapter still cannot establish hidden execution capability and remains `unknown`; it is not treated as the C03 reviewer backend. C03 uses four fresh, distinct native Codex subagent sessions against the frozen evidence-package digest, and records their actual dispatch identities and verdicts separately.
 - Pre-edit source/global-skill/dist backup and rollback material: `C:\Users\csn19\.uads\backups\FGE-004-M00-CD2-UADS-Delegation-Recovery-20260923T085322`. The two historical Failure Records remain unchanged.
 
 ## Security, cost and assurance limits
