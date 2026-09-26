@@ -28,6 +28,8 @@ Canonical source SHA-256 values are listed in [SOURCE-FINGERPRINTS.sha256](SOURC
 
 ## IA1 source fingerprint integrity correction
 
+The C01 coverage correction adds subprocess fixtures for reordered manifest paths, a case-only alias in the Git tree, and a missing referenced source blob. All three pass locally on Windows; the existing verifier behavior, source manifest and checkpoint remain unchanged. Scenario details, exact assertions and local results are recorded in the C01 section of the IA1 source fingerprint verification record. The final clean-clone result and exact-head four-job CI binding are recorded in PR #9 after push; C01 does not claim independent review or M00 approval.
+
 The 68-entry inventory is now bound to raw Git blob bytes and its path order is locked. The former 22 checkout-byte mismatches, complete old-to-corrected hash table, deterministic verifier, isolated fixture results and preserved `output/` metadata inventory are recorded in [IA1 source fingerprint verification](IA1-SOURCE-FINGERPRINT-VERIFICATION.md). PR #9 remains draft and unmerged; the exact correction head and its hosted Actions result are recorded in the PR after push. This evidence resolves the source-fingerprint integrity blocker only; independent assurance remains pending, and no M00 approval or checkpoint promotion is claimed.
 
 ## Executed local evidence

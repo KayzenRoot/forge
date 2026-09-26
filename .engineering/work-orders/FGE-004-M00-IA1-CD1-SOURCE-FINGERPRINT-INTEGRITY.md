@@ -55,3 +55,44 @@ Usage from the repository root: `python .engineering/scripts/verify_source_finge
 ## Stop Condition
 
 Stop after the corrected manifest and verifier pass in a fresh clean clone, the exact pushed head has green required checks, the PR description records the exact head/tree/result/run, and the independent-review blocker is explicitly preserved. If GitHub authentication is unavailable, complete and preserve local verified work, then report the precise remote step that could not be performed. Never force-push, rewrite history, discard local data, merge PR #9, promote the checkpoint or start M01.
+
+## C01 Correction Delta - Verifier Negative-Fixture Coverage
+
+Status: The three requested fixtures pass locally on Windows. No verifier behavior defect was reproduced. This section supplements the admitted CD1 Work Order and does not expand its product scope.
+
+### C01 Context Lock
+
+- Repository/branch/PR: KayzenRoot/forge, fge-004-m00-implementation, PR #9; keep it open, draft and unmerged.
+- Entry head/tree: d6bf00928f60f2809bdefbbcbd30ca55049789e3 / fb6d04961c3a025c73a2971053beade38ef45931. The branch and PR were rechecked at this head before editing.
+- The exact entry-head Actions run 36241342785 had all four jobs successful.
+- Local tools: Python 3.12.14; Git 2.55.0.windows.3.
+- The only pre-existing untracked path at C01 entry was output/. Its metadata inventory matched the prior baseline, aggregate SHA-256 ca24315981f5ea3b599660d65a71bef22b493aae4dbd00efd35a3fa8e6ccc4d2. Keep it untouched and out of the index.
+- The final C01 commit/tree and exact-head CI run are recorded in the PR #9 update after push; this file is committed before that final commit ID exists.
+
+### C01 Fixtures and Observed Results
+
+| Scenario | Required proof | Observed local result |
+| --- | --- | --- |
+| Reordered manifest path sequence | Swap two rows without changing the 68 paths, hashes or row count; require nonzero JSON result with path_list_mismatch, manifest_count=68, and no wrong_entry_count. | PASS. The verifier reported the sequence error with all 68 rows still valid. |
+| Case-only path alias in Git tree | Add a case-fold alias through the Git index with core.ignorecase=false, without creating a conflicting filesystem file; require ambiguous_tree_path and deterministic JSON. | PASS. The tree contained both exact path spellings; the verifier returned the expected error and mismatch reason identically on repeated runs. |
+| Referenced source blob unavailable | Commit a valid temporary fixture, make one loose source blob unavailable only inside that fixture, and require valid nonzero JSON with object_unavailable, no traceback. | PASS. The result identified the source path and blob OID. The harness clears the Windows read-only bit only on that temporary object before unlinking it; TemporaryDirectory removes the fixture even when an assertion fails. |
+
+The prior fixture suite also passed. All cases use real verifier subprocesses, isolated temporary repositories, no network, and a Git environment that ignores inherited GIT_* variables, global and system configuration. No platform skips were added.
+
+### C01 Local Verification
+
+Commands:
+
+    python -B .engineering/scripts/test_source_fingerprints.py
+    python -B .engineering/scripts/verify_source_fingerprints.py --commit HEAD
+    python -B .engineering/scripts/verify_source_fingerprints.py --commit a850153a596718afdc6926e649e4d87a09d29fff
+    git diff --check
+
+- Fixture harness: PASS on Windows, including the prior positive, deterministic and negative cases plus all three C01 scenarios.
+- Entry HEAD verifier: PASS, 68 entries, zero errors and mismatches.
+- Historical base verifier: expected exit 1 with 22 mismatches and zero errors; this is the known pre-correction manifest result, not a C01-head failure.
+- Canonical checkpoint governance block from repository-validation.yml: PASS (M00_EXECUTION_READY, increment FGE-004, implementation authorized).
+- The verifier, 68-path manifest, checkpoint, runtime, dependencies and workflows are unchanged by C01 unless a fixture reproduces a verifier defect. None did.
+- Risk is confined to exercising Git tree/object corruption behavior in self-cleaning temporary repositories. No repository object or output/ object is deleted.
+
+After commit/push, require a clean clone to pass the harness and verifier, recheck the output/ inventory, and bind the final SHA/tree plus all four successful exact-head CI jobs in PR #9. Stop after those checks for audit of C01. Do not compute an assurance digest, claim independent reviewers, certify/promote M00 or start M01.

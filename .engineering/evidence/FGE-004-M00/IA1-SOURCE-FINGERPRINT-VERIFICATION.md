@@ -96,3 +96,44 @@ Proposed future checkpoint-delta wording after independent assurance: “The IA1
 ## Final Exact-Head Record
 
 The final commit SHA, tree SHA, clean-clone verifier JSON, Actions run ID and PR draft/unmerged status are recorded in PR #9 after the push and exact-head run complete. The implementation candidate remains distinct from every evidence-only head.
+
+## C01 - Verifier Negative-Fixture Coverage Correction
+
+Status: All three requested negative fixtures pass locally on Windows. The verifier implementation needed no change; the audit found missing regression coverage, not a reproduced verifier defect.
+
+### Entry Context Lock
+
+- Repository/branch/PR: KayzenRoot/forge, fge-004-m00-implementation, PR #9.
+- Entry commit/tree: d6bf00928f60f2809bdefbbcbd30ca55049789e3 / fb6d04961c3a025c73a2971053beade38ef45931.
+- PR #9 was open, draft and unmerged. The branch and PR head matched the entry commit before editing.
+- Entry-head run 36241342785 passed all four configured jobs.
+- Python 3.12.14; Git 2.55.0.windows.3.
+- At C01 entry, output/ was the only pre-existing untracked path. Its before-execution metadata inventory still matches aggregate SHA-256 ca24315981f5ea3b599660d65a71bef22b493aae4dbd00efd35a3fa8e6ccc4d2.
+- Final C01 commit/tree and exact-head Actions evidence are bound in the PR #9 update after push. The evidence file cannot contain its own final commit ID.
+
+### Required C01 Proofs
+
+| Fixture | Contract and assertion | Result |
+| --- | --- | --- |
+| Manifest order | Swap the first two existing rows, preserving the same 68 paths, digests and total count. Require nonzero exit, JSON, manifest_count=68, path_list_mismatch, and no wrong_entry_count. | PASS on Windows. |
+| Case-only Git tree alias | Insert a second tree path differing only by case using git update-index --cacheinfo with core.ignorecase=false; no conflicting filesystem entry is created. Require nonzero exit, ambiguous_tree_path error and mismatch reason, and repeatable JSON. | PASS on Windows; repeated output was byte-identical. |
+| Missing source blob | Commit a valid fixture repository, then remove exactly one referenced loose source blob from that temporary repository. Require nonzero exit, valid JSON, object_unavailable for that path/OID, and no traceback. | PASS on Windows. The fixture makes only the temporary object writable before unlinking; TemporaryDirectory cleans the entire fixture on success or assertion failure. |
+
+The harness runs each verifier call in a subprocess and parses one JSON result with empty stderr. Git invocations clear inherited GIT_* variables, disable global/system Git configuration, terminal prompts and lazy fetch, and use only local repositories with no remotes. No tests are skipped by platform.
+
+### C01 Commands and Results
+
+    python -B .engineering/scripts/test_source_fingerprints.py
+    python -B .engineering/scripts/verify_source_fingerprints.py --commit HEAD
+    python -B .engineering/scripts/verify_source_fingerprints.py --commit a850153a596718afdc6926e649e4d87a09d29fff
+    git diff --check
+
+- Fixture suite: PASS, including existing positive/negative fixtures and all three C01 proofs.
+- Verifier on entry HEAD: PASS; manifest_count=68, mismatches empty, errors empty.
+- Verifier on historical base a850153a596718afdc6926e649e4d87a09d29fff: expected nonzero result with 22 mismatches and zero errors. The historical 22 are not a regression in the corrected head.
+- Canonical foundation/governance validation block from .github/workflows/repository-validation.yml: PASS; M00_EXECUTION_READY, FGE-004, implementation authorized.
+- C01 modifies the test harness and its evidence only. The verifier, 68 source fingerprints and order, checkpoint, Rust/runtime, dependencies and workflow remain unchanged.
+
+### C01 Final Exact-Head Binding
+
+After push, the final clean-clone harness/verifier result, final commit/tree, four-job Actions conclusion, output/ inventory comparison and PR #9 open/draft/unmerged state are recorded in the exact-head PR description. C01 stops for audit after that binding. It creates no assurance-packet digest or reviewer verdict and does not certify/promote M00 or begin M01.

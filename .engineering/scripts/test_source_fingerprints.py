@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -19,14 +20,35 @@ MANIFEST_RELATIVE = ".engineering/evidence/FGE-004-M00/SOURCE-FINGERPRINTS.sha25
 ROW_PATTERN = re.compile(rb"^([0-9a-f]{64})  (.+)$")
 
 
+def isolated_git_environment() -> dict[str, str]:
+    environment = {
+        key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_")
+    }
+    environment["GIT_CONFIG_GLOBAL"] = os.devnull
+    environment["GIT_CONFIG_NOSYSTEM"] = "1"
+    environment["GIT_NO_LAZY_FETCH"] = "1"
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+    return environment
+
+
 def run_git(repo: Path, *args: str, input_bytes: bytes | None = None) -> bytes:
-    command = ["git", "--no-replace-objects", "-C", str(repo), *args]
+    command = [
+        "git",
+        "-c",
+        f"safe.directory={repo.resolve().as_posix()}",
+        "--no-replace-objects",
+        "-C",
+        str(repo),
+        *args,
+    ]
     completed = subprocess.run(
         command,
         input=input_bytes,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
+        env=isolated_git_environment(),
     )
     if completed.returncode != 0:
         raise AssertionError(
@@ -58,6 +80,7 @@ def invoke(repo: Path, commit: str | None = None) -> tuple[int, dict[str, object
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
+        env=isolated_git_environment(),
     )
     if completed.stderr:
         raise AssertionError(f"verifier wrote unexpected stderr: {completed.stderr.decode('utf-8', 'replace')}")
@@ -93,6 +116,7 @@ def create_fixture(
     repo.mkdir()
     run_git(repo, "init", "--quiet", "--initial-branch=main")
     run_git(repo, "config", "core.autocrlf", "false")
+    run_git(repo, "config", "gc.auto", "0")
     run_git(repo, "config", "user.name", "Fingerprint Fixture")
     run_git(repo, "config", "user.email", "fixture@example.invalid")
     rows, payloads = make_manifest_rows(paths)
@@ -127,6 +151,48 @@ def expect_failure(
     reasons = {item.get("reason") for item in mismatches if isinstance(item, dict)}
     if expected_code not in codes and expected_code not in reasons:
         raise AssertionError(f"{name}: expected {expected_code}, got errors={errors} mismatches={mismatches}")
+
+
+def tree_entry(repo: Path, commit: str, path: str) -> tuple[str, str, str]:
+    records = run_git(repo, "ls-tree", "-r", "-z", commit).split(b"\0")
+    wanted_path = path.encode("utf-8")
+    for record in records:
+        if not record:
+            continue
+        metadata, entry_path = record.split(b"\t", 1)
+        if entry_path == wanted_path:
+            mode, object_type, object_id = metadata.decode("ascii").split()
+            return mode, object_type, object_id
+    raise AssertionError(f"fixture tree is missing path {path}")
+
+
+def assert_specific_failure(
+    name: str,
+    code: int,
+    payload: dict[str, object],
+    *,
+    error_code: str | None = None,
+    mismatch_reason: str | None = None,
+    manifest_count: int | None = None,
+) -> None:
+    if code == 0 or payload.get("pass") is not False:
+        raise AssertionError(f"{name}: expected a nonzero verifier result: {payload}")
+    if manifest_count is not None and payload.get("manifest_count") != manifest_count:
+        raise AssertionError(
+            f"{name}: expected manifest_count={manifest_count}, got {payload.get('manifest_count')}"
+        )
+    errors = payload.get("errors")
+    codes = {item.get("code") for item in errors if isinstance(item, dict)} if isinstance(errors, list) else set()
+    if error_code is not None and error_code not in codes:
+        raise AssertionError(f"{name}: expected error {error_code}, got {errors}")
+    mismatches = payload.get("mismatches")
+    reasons = (
+        {item.get("reason") for item in mismatches if isinstance(item, dict)}
+        if isinstance(mismatches, list)
+        else set()
+    )
+    if mismatch_reason is not None and mismatch_reason not in reasons:
+        raise AssertionError(f"{name}: expected mismatch reason {mismatch_reason}, got {mismatches}")
 
 
 def main() -> int:
@@ -187,6 +253,107 @@ def main() -> int:
         )
         expect_failure(parent, "wrong-count", paths, lambda lines: lines[:-1], "wrong_entry_count")
 
+        def reorder_first_two_rows(lines: list[bytes]) -> list[bytes]:
+            if len(lines) != 68 or len(set(lines)) != 68:
+                raise AssertionError("path-order fixture must start with 68 distinct manifest rows")
+            lines[0], lines[1] = lines[1], lines[0]
+            return lines
+
+        order_repo, _, _ = create_fixture(parent, "path-order", paths, reorder_first_two_rows)
+        order_commit = run_git(order_repo, "rev-parse", "HEAD").decode("ascii").strip()
+        code, result, _ = invoke(order_repo, order_commit)
+        assert_specific_failure(
+            "path-order",
+            code,
+            result,
+            error_code="path_list_mismatch",
+            manifest_count=68,
+        )
+        order_codes = {
+            item.get("code")
+            for item in result.get("errors", [])
+            if isinstance(item, dict)
+        }
+        if "wrong_entry_count" in order_codes:
+            raise AssertionError("path-order fixture must preserve all 68 valid manifest rows")
+
+        alias_repo, _, _ = create_fixture(parent, "case-only-tree-alias", paths)
+        alias_source_path = next(
+            path for path in paths if any(character.isalpha() for character in path)
+        )
+        alias_path = alias_source_path.swapcase()
+        if alias_path == alias_source_path or alias_path.casefold() != alias_source_path.casefold():
+            raise AssertionError("case-only tree fixture did not construct a case-only alias")
+        alias_commit_before = run_git(alias_repo, "rev-parse", "HEAD").decode("ascii").strip()
+        mode, object_type, object_id = tree_entry(
+            alias_repo, alias_commit_before, alias_source_path
+        )
+        if object_type != "blob" or mode not in ("100644", "100755"):
+            raise AssertionError("case-only tree fixture source is not a regular blob")
+        run_git(alias_repo, "config", "core.ignorecase", "false")
+        run_git(
+            alias_repo,
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"{mode},{object_id},{alias_path}",
+        )
+        run_git(alias_repo, "commit", "--quiet", "-m", "case-only tree alias fixture")
+        alias_commit = run_git(alias_repo, "rev-parse", "HEAD").decode("ascii").strip()
+        alias_tree_paths = {
+            record.split(b"\t", 1)[1]
+            for record in run_git(alias_repo, "ls-tree", "-r", "-z", alias_commit).split(b"\0")
+            if record
+        }
+        if (
+            alias_source_path.encode("utf-8") not in alias_tree_paths
+            or alias_path.encode("utf-8") not in alias_tree_paths
+        ):
+            raise AssertionError("case-only alias was not preserved in the committed Git tree")
+        code, result, alias_output = invoke(alias_repo, alias_commit)
+        assert_specific_failure(
+            "case-only-tree-alias",
+            code,
+            result,
+            error_code="ambiguous_tree_path",
+            mismatch_reason="ambiguous_tree_path",
+            manifest_count=68,
+        )
+        code_again, result_again, alias_output_again = invoke(alias_repo, alias_commit)
+        if code_again == 0 or result_again != result or alias_output_again != alias_output:
+            raise AssertionError("case-only tree alias output was not deterministic")
+
+        missing_repo, _, _ = create_fixture(parent, "missing-source-blob", paths)
+        missing_commit = run_git(missing_repo, "rev-parse", "HEAD").decode("ascii").strip()
+        missing_source_path = next(path for path in paths if path != ".gitattributes")
+        _, missing_type, missing_oid = tree_entry(missing_repo, missing_commit, missing_source_path)
+        if missing_type != "blob":
+            raise AssertionError("missing-object fixture source is not a blob")
+        loose_object_path = (
+            missing_repo / ".git" / "objects" / missing_oid[:2] / missing_oid[2:]
+        )
+        if not loose_object_path.is_file():
+            raise AssertionError("missing-object fixture source was not stored as a loose Git object")
+        loose_object_path.chmod(0o600)
+        loose_object_path.unlink()
+        code, result, _ = invoke(missing_repo, missing_commit)
+        assert_specific_failure(
+            "missing-source-blob",
+            code,
+            result,
+            mismatch_reason="object_unavailable",
+            manifest_count=68,
+        )
+        unavailable_mismatch = any(
+            item.get("path") == missing_source_path
+            and item.get("blob_oid") == missing_oid
+            and item.get("reason") == "object_unavailable"
+            for item in result.get("mismatches", [])
+            if isinstance(item, dict)
+        )
+        if not unavailable_mismatch:
+            raise AssertionError("missing-object fixture did not identify the unavailable source blob")
+
         symlink_repo, _, _ = create_fixture(parent, "symlink", paths)
         symlink_path = next(path for path in paths if path != ".gitattributes")
         target_oid = run_git(symlink_repo, "hash-object", "-w", "--stdin", input_bytes=b"outside-target").decode("ascii").strip()
@@ -206,7 +373,12 @@ def main() -> int:
         }:
             raise AssertionError(f"Git command failure was not reported as JSON: {result}")
 
-    print("source fingerprint verifier fixtures passed: valid CRLF object, deterministic output, digest mismatch, invalid digest, duplicate, malformed, missing path, traversal, wrong count, symlink, Git failure")
+    print(
+        "source fingerprint verifier fixtures passed: valid CRLF object, deterministic output, "
+        "digest mismatch, invalid digest, duplicate, malformed, missing path, traversal, "
+        "wrong count, path order, case-only Git tree alias, unavailable source blob, "
+        "symlink, Git failure"
+    )
     return 0
 
 
