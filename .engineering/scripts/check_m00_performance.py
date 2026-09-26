@@ -51,7 +51,6 @@ COMMON_REQUIRED = {
     "resource_usage_durable",
     "readiness_query_one_check",
     "telemetry_observation",
-    "ephemeral_event_fanout",
     "cancellation_lineage_check",
     "cancellation_parent_to_child",
     "runtime_start_and_shutdown",
@@ -59,7 +58,6 @@ COMMON_REQUIRED = {
     "state_transaction_write",
     "state_read",
     "durable_event_outbox",
-    "state_backup_snapshot",
 }
 SEMANTICALLY_CHANGED = {
     "capability_registration": (
@@ -79,6 +77,10 @@ SEMANTICALLY_CHANGED = {
         "The candidate includes schema-v3 shared-ledger integrity, owner heartbeat/recovery, "
         "trusted capability evidence, and expanded optional-service diagnostics absent from C02."
     ),
+    "ephemeral_event_fanout": (
+        "The candidate validates every event payload with the bounded secret filter before "
+        "fanout; C02 did not perform this validation."
+    ),
     "command_dispatch_local_mutation": (
         "The candidate verifies and durably consumes a host-signed scoped decision, then "
         "commits state, outbox, and command receipt atomically; C02 did not perform these checks."
@@ -86,6 +88,10 @@ SEMANTICALLY_CHANGED = {
     "state_backup_restore": (
         "The candidate restore path validates bounded secret-safe payloads and schema-v3 "
         "shared-ledger totals; C02 restored the earlier state format and invariants."
+    ),
+    "state_backup_snapshot": (
+        "The candidate snapshot includes schema-v3 owner, shared-ledger, and authorization "
+        "tables plus their integrity state; C02 used the earlier schema and data shape."
     ),
     "proof_obligation_compile": (
         "C02 compiled a caller-constructed assessment; the candidate derives changed paths "
