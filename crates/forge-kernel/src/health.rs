@@ -51,6 +51,50 @@ pub struct HealthRegistry {
     consecutive_failures: BTreeMap<String, u32>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadinessDigestInput<'a> {
+    degraded_optional: &'a [String],
+    escalated_failures: &'a [String],
+    failed_required: &'a [String],
+    observations: CanonicalObservations<'a>,
+    state: &'a HealthState,
+}
+
+struct CanonicalObservations<'a>(&'a BTreeMap<String, ProbeObservation>);
+
+#[derive(Serialize)]
+struct CanonicalProbeObservation<'a> {
+    check_id: &'a str,
+    failure_code: &'a Option<String>,
+    latency_ms: u64,
+    observed_at_ms: u64,
+    passed: bool,
+}
+
+impl Serialize for CanonicalObservations<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = serde::Serializer::serialize_map(serializer, Some(self.0.len()))?;
+        for (id, observation) in self.0 {
+            serde::ser::SerializeMap::serialize_entry(
+                &mut map,
+                id,
+                &CanonicalProbeObservation {
+                    check_id: &observation.check_id,
+                    failure_code: &observation.failure_code,
+                    latency_ms: observation.latency_ms,
+                    observed_at_ms: observation.observed_at_ms,
+                    passed: observation.passed,
+                },
+            )?;
+        }
+        serde::ser::SerializeMap::end(map)
+    }
+}
+
 impl HealthRegistry {
     pub fn register(&mut self, policy: ProbePolicy) -> Result<(), HealthError> {
         if !valid_identity(&policy.check_id)
@@ -132,13 +176,13 @@ impl HealthRegistry {
         } else {
             HealthState::Ready
         };
-        let report_input = serde_json::json!({
-            "state": state,
-            "failedRequired": failed_required,
-            "degradedOptional": degraded_optional,
-            "escalatedFailures": escalated_failures,
-            "observations": self.latest,
-        });
+        let report_input = ReadinessDigestInput {
+            degraded_optional: &degraded_optional,
+            escalated_failures: &escalated_failures,
+            failed_required: &failed_required,
+            observations: CanonicalObservations(&self.latest),
+            state: &state,
+        };
         let bytes = serde_json::to_vec(&report_input).map_err(|_| HealthError::Fingerprint)?;
         Ok(ReadinessReport {
             state,
@@ -291,6 +335,42 @@ mod tests {
         assert_eq!(
             registry.readiness(3).expect("ready report").state,
             HealthState::Ready
+        );
+    }
+
+    #[test]
+    fn readiness_digest_preserves_the_canonical_json_shape() {
+        let mut registry = HealthRegistry::default();
+        registry
+            .register(ProbePolicy {
+                check_id: "bench.required".into(),
+                required: true,
+                maximum_age_ms: 10_000,
+                degradation_after_failures: 2,
+            })
+            .expect("health policy");
+        registry
+            .record(ProbeObservation {
+                check_id: "bench.required".into(),
+                passed: true,
+                observed_at_ms: 100,
+                latency_ms: 1,
+                failure_code: None,
+            })
+            .expect("health observation");
+
+        let report = registry.readiness(101).expect("readiness");
+        let canonical = serde_json::json!({
+            "state": report.state,
+            "failedRequired": report.failed_required,
+            "degradedOptional": report.degraded_optional,
+            "escalatedFailures": report.escalated_failures,
+            "observations": registry.latest,
+        });
+        let canonical_bytes = serde_json::to_vec(&canonical).expect("canonical JSON");
+        assert_eq!(
+            report.digest,
+            blake3::hash(&canonical_bytes).to_hex().to_string()
         );
     }
 }

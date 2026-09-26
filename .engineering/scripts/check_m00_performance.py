@@ -70,11 +70,11 @@ SEMANTICALLY_CHANGED = {
         "public fixture is Declared/Unknown because callers can no longer assert provenance."
     ),
     "cold_native_boot": (
-        "The candidate includes schema-v3 shared-ledger integrity, trusted capability "
+        "The candidate includes schema-v4 shared-ledger and command-outcome integrity, trusted capability "
         "evidence, and expanded optional-service diagnostics absent from C02."
     ),
     "warm_native_boot": (
-        "The candidate includes schema-v3 shared-ledger integrity, owner heartbeat/recovery, "
+        "The candidate includes schema-v4 shared-ledger and command-outcome integrity, owner heartbeat/recovery, "
         "trusted capability evidence, and expanded optional-service diagnostics absent from C02."
     ),
     "ephemeral_event_fanout": (
@@ -86,11 +86,11 @@ SEMANTICALLY_CHANGED = {
         "commits state, outbox, and command receipt atomically; C02 did not perform these checks."
     ),
     "state_backup_restore": (
-        "The candidate restore path validates bounded secret-safe payloads and schema-v3 "
-        "shared-ledger totals; C02 restored the earlier state format and invariants."
+        "The candidate restore path validates bounded secret-safe payloads and schema-v4 "
+        "shared-ledger and outcome-resolution state; C02 restored the earlier state format and invariants."
     ),
     "state_backup_snapshot": (
-        "The candidate snapshot includes schema-v3 owner, shared-ledger, and authorization "
+        "The candidate snapshot includes schema-v4 owner, shared-ledger, authorization, and outcome-resolution "
         "tables plus their integrity state; C02 used the earlier schema and data shape."
     ),
     "proof_obligation_compile": (
