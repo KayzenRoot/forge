@@ -452,7 +452,7 @@ def main() -> int:
             "rustc_vv": toolchain,
             "cargo": cargo_version,
         },
-        "threshold_method": "median of five outer-run medians plus three median absolute deviations, floored at the highest observed baseline run",
+        "threshold_method": f"median of {args.runs} outer-run medians plus three median absolute deviations, floored at the highest observed baseline run",
         "execution_order": "baseline first on odd-numbered pairs; candidate first on even-numbered pairs",
         "semantic_change_classifications": SEMANTICALLY_CHANGED,
         "common_workload_comparison": comparison,
