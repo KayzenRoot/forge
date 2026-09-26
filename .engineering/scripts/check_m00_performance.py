@@ -51,8 +51,6 @@ COMMON_REQUIRED = {
     "change_cone_100_node_chain",
     "resource_lease_and_delegation",
     "resource_usage_durable",
-    "proof_obligation_compile",
-    "proof_minimal_selection",
     "readiness_query_one_check",
     "telemetry_observation",
     "ephemeral_event_fanout",
@@ -77,6 +75,10 @@ CANDIDATE_REQUIRED = {
     "scheduler_owner_rotation_1000",
     "scheduler_owner_rotation_10000",
     "git_exact_change_assessment",
+    # These now exercise Git-derived assessments and backend-authenticated receipts;
+    # the C02 versions benchmarked caller-constructed assessments and unsigned nodes.
+    "proof_obligation_compile",
+    "proof_minimal_selection",
 }
 
 
