@@ -46,8 +46,6 @@ COMMON_REQUIRED = {
     "typed_content_fingerprint_1k",
     "contract_validate",
     "contract_compile",
-    "capability_resolution_one_candidate",
-    "capability_registration",
     "change_cone_100_node_chain",
     "resource_lease_and_delegation",
     "resource_usage_durable",
@@ -57,15 +55,46 @@ COMMON_REQUIRED = {
     "cancellation_lineage_check",
     "cancellation_parent_to_child",
     "runtime_start_and_shutdown",
-    "cold_native_boot",
-    "warm_native_boot",
     "semantic_cache_lookup",
     "state_transaction_write",
     "state_read",
     "durable_event_outbox",
-    "command_dispatch_local_mutation",
     "state_backup_snapshot",
-    "state_backup_restore",
+}
+SEMANTICALLY_CHANGED = {
+    "capability_registration": (
+        "C02 registered caller-asserted ConformancePassed/Ready values; the correction "
+        "only permits public Declared/Unknown registration and records verified runtime "
+        "evidence through a trusted path."
+    ),
+    "capability_resolution_one_candidate": (
+        "C02 resolved a caller-asserted ConformancePassed/Ready candidate; the corrected "
+        "public fixture is Declared/Unknown because callers can no longer assert provenance."
+    ),
+    "cold_native_boot": (
+        "The candidate includes schema-v3 shared-ledger integrity, trusted capability "
+        "evidence, and expanded optional-service diagnostics absent from C02."
+    ),
+    "warm_native_boot": (
+        "The candidate includes schema-v3 shared-ledger integrity, owner heartbeat/recovery, "
+        "trusted capability evidence, and expanded optional-service diagnostics absent from C02."
+    ),
+    "command_dispatch_local_mutation": (
+        "The candidate verifies and durably consumes a host-signed scoped decision, then "
+        "commits state, outbox, and command receipt atomically; C02 did not perform these checks."
+    ),
+    "state_backup_restore": (
+        "The candidate restore path validates bounded secret-safe payloads and schema-v3 "
+        "shared-ledger totals; C02 restored the earlier state format and invariants."
+    ),
+    "proof_obligation_compile": (
+        "C02 compiled a caller-constructed assessment; the candidate derives changed paths "
+        "from Git and conservatively derives obligations."
+    ),
+    "proof_minimal_selection": (
+        "C02 selected caller-asserted unsigned Passed nodes; the candidate verifies a "
+        "backend-authenticated receipt bound to the exact proof and change set."
+    ),
 }
 CANDIDATE_REQUIRED = {
     "change_cone_100_node_chain",
@@ -75,10 +104,7 @@ CANDIDATE_REQUIRED = {
     "scheduler_owner_rotation_1000",
     "scheduler_owner_rotation_10000",
     "git_exact_change_assessment",
-    # These now exercise Git-derived assessments and backend-authenticated receipts;
-    # the C02 versions benchmarked caller-constructed assessments and unsigned nodes.
-    "proof_obligation_compile",
-    "proof_minimal_selection",
+    *SEMANTICALLY_CHANGED.keys(),
 }
 
 
@@ -258,16 +284,20 @@ def main() -> int:
 
     toolchain = run(["rustc", "-Vv"], candidate, candidate_environment).strip()
     cargo_version = run(["cargo", "-V"], candidate, candidate_environment).strip()
-    # Compile both workspaces before timing, then alternate runs to avoid giving
-    # one revision every first-run or warm-cache advantage.
+    # Compile both workspaces before timing. Alternate which source tree runs
+    # first on each pair to reduce temporal and warm-cache bias.
     bench_workspace(baseline, baseline_environment, no_run=True)
     bench_workspace(candidate, candidate_environment, no_run=True)
 
     baseline_runs: list[dict[str, object]] = []
     candidate_runs: list[dict[str, object]] = []
     for run_number in range(1, args.runs + 1):
-        baseline_output = bench_workspace(baseline, baseline_environment, no_run=False)
-        candidate_output = bench_workspace(candidate, candidate_environment, no_run=False)
+        if run_number % 2:
+            baseline_output = bench_workspace(baseline, baseline_environment, no_run=False)
+            candidate_output = bench_workspace(candidate, candidate_environment, no_run=False)
+        else:
+            candidate_output = bench_workspace(candidate, candidate_environment, no_run=False)
+            baseline_output = bench_workspace(baseline, baseline_environment, no_run=False)
         baseline_runs.append(parse_output(baseline_output))
         candidate_runs.append(parse_output(candidate_output))
         print(f"performance_pair={run_number}/{args.runs} PASS", flush=True)
@@ -312,11 +342,26 @@ def main() -> int:
         values = [
             result["benchmarks"][name]["median_ns_per_operation"] for result in candidate_runs
         ]
-        candidate_new_workloads[name] = {
+        entry: dict[str, object] = {
+            "comparison_status": "not_comparable" if name in SEMANTICALLY_CHANGED else "candidate_only",
+            "reason": SEMANTICALLY_CHANGED.get(name, "first measured in this correction"),
             "outer_medians_ns": values,
-            "initial_budget": median_mad_budget(values),
-            "historical_comparison": "none; first measured in this correction",
+            "proposed_candidate_budget": median_mad_budget(values),
+            "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
         }
+        if name in SEMANTICALLY_CHANGED and name in baseline_names:
+            reference_values = [
+                result["benchmarks"][name]["median_ns_per_operation"] for result in baseline_runs
+            ]
+            entry["historical_reference"] = {
+                "baseline_outer_medians_ns": reference_values,
+                "baseline_summary": median_mad_budget(reference_values),
+                "median_change_percent": round(
+                    100 * (statistics.median(values) / statistics.median(reference_values) - 1), 2
+                ),
+                "interpretation": "reported for context only; workload semantics differ",
+            }
+        candidate_new_workloads[name] = entry
 
     def medians(name: str) -> list[int]:
         return [
@@ -402,6 +447,8 @@ def main() -> int:
             "cargo": cargo_version,
         },
         "threshold_method": "median of five outer-run medians plus three median absolute deviations, floored at the highest observed baseline run",
+        "execution_order": "baseline first on odd-numbered pairs; candidate first on even-numbered pairs",
+        "semantic_change_classifications": SEMANTICALLY_CHANGED,
         "common_workload_comparison": comparison,
         "candidate_only_workloads": candidate_new_workloads,
         "scaling_checks": scaling_checks,
