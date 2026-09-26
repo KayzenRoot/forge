@@ -45,6 +45,8 @@ Canonical resource policy/accounting authority coordinating S01 leases, S13 sche
 ### Resource Lease Protocol (RLP)
 Versioned lease describing resource vector, owner, scope, expiry, priority class, revocation policy and evidence identity. A lease grants bounded consumption, not unrestricted access.
 
+The native M00 governor uses a bounded 60-second monotonic lifetime for each root reservation. Delegated leases inherit that root lifetime and cannot extend it. Expired handles fail closed; lease admission reclaims expired reservations, and a host may call the bounded expiry reaper during periodic maintenance. The governor caps tracked leases at 100,000 so expiry bookkeeping is bounded.
+
 ### Multi-Dimensional Resource Budget (MDRB)
 Budget vector spanning machine/provider/token/cost dimensions. Child work can receive delegated sub-budgets whose total cannot exceed parent authority.
 

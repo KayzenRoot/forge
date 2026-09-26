@@ -74,8 +74,8 @@ def source_paths() -> list[str]:
         if match is None:
             raise AssertionError(f"committed manifest row {line_number} is malformed")
         paths.append(match.group(2).decode("utf-8", "strict"))
-    if len(paths) != 68 or len(set(path.casefold() for path in paths)) != 68:
-        raise AssertionError("the repository manifest must contain 68 unique paths before fixtures run")
+    if len(paths) != 72 or len(set(path.casefold() for path in paths)) != 72:
+        raise AssertionError("the repository manifest must contain 72 unique paths before fixtures run")
     return paths
 
 
@@ -235,7 +235,7 @@ def main() -> int:
         code, result, first_output = invoke(valid_repo, valid_commit)
         if code != 0 or result.get("pass") is not True:
             raise AssertionError(f"valid Git blob fixture failed: {result}")
-        if result.get("manifest_count") != 68 or result.get("mismatches") != []:
+        if result.get("manifest_count") != 72 or result.get("mismatches") != []:
             raise AssertionError(f"valid fixture returned unexpected counts: {result}")
         if not re.fullmatch(r"[0-9a-f]{40,64}", str(result.get("commit_sha"))):
             raise AssertionError("valid fixture did not report its full commit SHA")
@@ -292,9 +292,24 @@ def main() -> int:
         )
         expect_failure(parent, "wrong-count", paths, lambda lines: lines[:-1], "wrong_entry_count")
 
+        unlisted_build_repo, _, _ = create_fixture(parent, "unlisted-build-script", paths)
+        build_script = unlisted_build_repo / "crates" / "forge-kernel" / "build.rs"
+        build_script.parent.mkdir(parents=True, exist_ok=True)
+        build_script.write_text("fn main() {}\n", encoding="utf-8")
+        run_git(unlisted_build_repo, "add", "--all")
+        run_git(unlisted_build_repo, "commit", "--quiet", "-m", "unlisted build script fixture")
+        code, result, _ = invoke(unlisted_build_repo)
+        assert_specific_failure(
+            "unlisted-build-script",
+            code,
+            result,
+            error_code="unlisted_build_input",
+            manifest_count=72,
+        )
+
         def reorder_first_two_rows(lines: list[bytes]) -> list[bytes]:
-            if len(lines) != 68 or len(set(lines)) != 68:
-                raise AssertionError("path-order fixture must start with 68 distinct manifest rows")
+            if len(lines) != 72 or len(set(lines)) != 72:
+                raise AssertionError("path-order fixture must start with 72 distinct manifest rows")
             lines[0], lines[1] = lines[1], lines[0]
             return lines
 
@@ -306,7 +321,7 @@ def main() -> int:
             code,
             result,
             error_code="path_list_mismatch",
-            manifest_count=68,
+            manifest_count=72,
         )
         order_codes = {
             item.get("code")
@@ -314,7 +329,7 @@ def main() -> int:
             if isinstance(item, dict)
         }
         if "wrong_entry_count" in order_codes:
-            raise AssertionError("path-order fixture must preserve all 68 valid manifest rows")
+            raise AssertionError("path-order fixture must preserve all 72 valid manifest rows")
 
         alias_repo, _, _ = create_fixture(parent, "case-only-tree-alias", paths)
         alias_source_path = next(
@@ -356,7 +371,7 @@ def main() -> int:
             result,
             error_code="ambiguous_tree_path",
             mismatch_reason="ambiguous_tree_path",
-            manifest_count=68,
+            manifest_count=72,
         )
         code_again, result_again, alias_output_again = invoke(alias_repo, alias_commit)
         if code_again == 0 or result_again != result or alias_output_again != alias_output:
@@ -381,7 +396,7 @@ def main() -> int:
             code,
             result,
             mismatch_reason="object_unavailable",
-            manifest_count=68,
+            manifest_count=72,
         )
         unavailable_mismatch = any(
             item.get("path") == missing_source_path
@@ -435,7 +450,7 @@ def main() -> int:
         "source fingerprint verifier fixtures passed: valid CRLF object, deterministic output, "
         "digest mismatch, invalid digest, duplicate, malformed, missing path, traversal, "
         "wrong count, path order, case-only Git tree alias, unavailable source blob, "
-        "oversized source blob bound, symlink, fabricated commit rejection, SHA-1/SHA-256 "
+        "unlisted build script rejection, oversized source blob bound, symlink, fabricated commit rejection, SHA-1/SHA-256 "
         "object-format validation, path-depth and tree-entry bounds, Git failure"
     )
     return 0

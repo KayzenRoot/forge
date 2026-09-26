@@ -13,7 +13,7 @@ use sqlx::{Row, SqlitePool};
 use thiserror::Error;
 use tokio::sync::watch;
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS forge_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS canonical_state (owner TEXT NOT NULL, key TEXT NOT NULL, value BLOB NOT NULL, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (owner, key))",
@@ -36,6 +36,10 @@ const CORRECTION_MIGRATIONS: &[&str] = &[
     "INSERT OR IGNORE INTO resource_usage_totals(pool, tokens, cost_micros, record_count) SELECT pool, SUM(tokens), SUM(cost_micros), COUNT(*) FROM resource_usage GROUP BY pool",
     "INSERT OR IGNORE INTO resource_usage_totals(pool, tokens, cost_micros, record_count) VALUES('ordinary', 0, 0, 0), ('survival', 0, 0, 0)",
     "CREATE TABLE IF NOT EXISTS authorization_decisions (decision_id TEXT PRIMARY KEY, claims_fingerprint TEXT NOT NULL, consumed_at_ms INTEGER, revoked_at_ms INTEGER)",
+];
+const OUTCOME_RESOLUTION_MIGRATIONS: &[&str] = &[
+    "CREATE TABLE IF NOT EXISTS command_outcome_resolutions (resolution_id INTEGER PRIMARY KEY AUTOINCREMENT, identity TEXT NOT NULL REFERENCES command_intents(identity), decision_id TEXT NOT NULL UNIQUE, outcome TEXT NOT NULL CHECK(outcome IN ('effect_committed', 'effect_not_committed', 'inconclusive')), evidence_fingerprint TEXT NOT NULL, decision_fingerprint TEXT NOT NULL, resolved_at_ms INTEGER NOT NULL CHECK(resolved_at_ms >= 0))",
+    "CREATE INDEX IF NOT EXISTS command_outcome_resolutions_identity ON command_outcome_resolutions(identity, resolution_id DESC)",
 ];
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -91,6 +95,43 @@ pub struct IdempotencyRecord {
     pub state: IdempotencyState,
     pub result: Option<Value>,
     pub error_code: Option<String>,
+    pub latest_resolution: Option<CommandOutcomeResolutionRecord>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandOutcomeResolutionKind {
+    EffectCommitted,
+    EffectNotCommitted,
+    Inconclusive,
+}
+
+impl CommandOutcomeResolutionKind {
+    fn as_db(self) -> &'static str {
+        match self {
+            Self::EffectCommitted => "effect_committed",
+            Self::EffectNotCommitted => "effect_not_committed",
+            Self::Inconclusive => "inconclusive",
+        }
+    }
+
+    fn from_db(value: &str) -> Result<Self, StateError> {
+        match value {
+            "effect_committed" => Ok(Self::EffectCommitted),
+            "effect_not_committed" => Ok(Self::EffectNotCommitted),
+            "inconclusive" => Ok(Self::Inconclusive),
+            _ => Err(StateError::Integrity),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CommandOutcomeResolutionRecord {
+    pub kind: CommandOutcomeResolutionKind,
+    pub evidence_fingerprint: String,
+    pub decision_fingerprint: String,
+    pub decision_id: String,
+    pub resolved_at_ms: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -704,12 +745,48 @@ impl ForgeStateStore {
             let result: Option<Vec<u8>> = row.try_get("result").map_err(StateError::Storage)?;
             let error_code: Option<String> =
                 row.try_get("error_code").map_err(StateError::Storage)?;
+            let resolution_row = sqlx::query(
+                "SELECT outcome, evidence_fingerprint, decision_fingerprint, decision_id, resolved_at_ms FROM command_outcome_resolutions WHERE identity=?1 ORDER BY resolution_id DESC LIMIT 1",
+            )
+            .bind(identity)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(StateError::Storage)?;
+            let latest_resolution = resolution_row
+                .map(
+                    |resolution| -> Result<CommandOutcomeResolutionRecord, StateError> {
+                        let outcome: String =
+                            resolution.try_get("outcome").map_err(StateError::Storage)?;
+                        let evidence_fingerprint: String = resolution
+                            .try_get("evidence_fingerprint")
+                            .map_err(StateError::Storage)?;
+                        let decision_fingerprint: String = resolution
+                            .try_get("decision_fingerprint")
+                            .map_err(StateError::Storage)?;
+                        let decision_id: String = resolution
+                            .try_get("decision_id")
+                            .map_err(StateError::Storage)?;
+                        let resolved_at_ms: i64 = resolution
+                            .try_get("resolved_at_ms")
+                            .map_err(StateError::Storage)?;
+                        Ok(CommandOutcomeResolutionRecord {
+                            kind: CommandOutcomeResolutionKind::from_db(&outcome)?,
+                            evidence_fingerprint,
+                            decision_fingerprint,
+                            decision_id,
+                            resolved_at_ms: u64::try_from(resolved_at_ms)
+                                .map_err(|_| StateError::Integrity)?,
+                        })
+                    },
+                )
+                .transpose()?;
             Some(IdempotencyRecord {
                 state: IdempotencyState::from_db(&state)?,
                 result: result
                     .map(|bytes| serde_json::from_slice(&bytes).map_err(StateError::Serialization))
                     .transpose()?,
                 error_code,
+                latest_resolution,
             })
         } else {
             None
@@ -760,9 +837,81 @@ impl ForgeStateStore {
             return Err(StateError::StateConflict);
         }
         validate_identity(identity)?;
-        validate_key(error_code)?;
+        validate_error_code(error_code)?;
         self.transition_idempotency(identity, state, None, Some(error_code.to_owned()))
             .await
+    }
+
+    /// Applies a host-verified reconciliation result to an ambiguous external command.
+    /// The caller must verify the host signature before this method; the decision id,
+    /// its fingerprint, the resolution record, and the state transition commit atomically.
+    pub async fn reconcile_unknown_outcome(
+        &self,
+        identity: &str,
+        kind: CommandOutcomeResolutionKind,
+        evidence_fingerprint: &str,
+        decision_id: &str,
+        decision_fingerprint: &str,
+        resolved_at_ms: u64,
+    ) -> Result<(), StateError> {
+        self.ensure_owner_healthy()?;
+        validate_identity(identity)?;
+        validate_key(decision_id)?;
+        validate_digest(evidence_fingerprint)?;
+        validate_digest(decision_fingerprint)?;
+        let resolved_at_ms = i64::try_from(resolved_at_ms).map_err(|_| StateError::Integrity)?;
+        let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+        let consumed = sqlx::query(
+            "INSERT INTO authorization_decisions(decision_id, claims_fingerprint, consumed_at_ms, revoked_at_ms) VALUES(?1, ?2, ?3, NULL) ON CONFLICT(decision_id) DO NOTHING",
+        )
+        .bind(decision_id)
+        .bind(decision_fingerprint)
+        .bind(resolved_at_ms)
+        .execute(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        if consumed.rows_affected() != 1 {
+            return Err(StateError::StateConflict);
+        }
+        let (next_state, error_code) = match kind {
+            CommandOutcomeResolutionKind::EffectCommitted => (
+                "unknown_outcome",
+                "FORGE.COMMAND.EFFECT_COMMITTED_REQUIRES_FINALIZATION",
+            ),
+            CommandOutcomeResolutionKind::EffectNotCommitted => {
+                ("failed_retryable", "FORGE.COMMAND.RECONCILED_NOT_COMMITTED")
+            }
+            CommandOutcomeResolutionKind::Inconclusive => (
+                "unknown_outcome",
+                "FORGE.COMMAND.RECONCILIATION_INCONCLUSIVE",
+            ),
+        };
+        let update = sqlx::query(
+            "UPDATE command_intents SET state=?2, result=NULL, error_code=?3, owner_instance_id=NULL, lease_expires_at_ms=NULL, updated_at=CURRENT_TIMESTAMP WHERE identity=?1 AND state='unknown_outcome'",
+        )
+        .bind(identity)
+        .bind(next_state)
+        .bind(error_code)
+        .execute(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        if update.rows_affected() != 1 {
+            return Err(StateError::StateConflict);
+        }
+        sqlx::query(
+            "INSERT INTO command_outcome_resolutions(identity, decision_id, outcome, evidence_fingerprint, decision_fingerprint, resolved_at_ms) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+        )
+        .bind(identity)
+        .bind(decision_id)
+        .bind(kind.as_db())
+        .bind(evidence_fingerprint)
+        .bind(decision_fingerprint)
+        .bind(resolved_at_ms)
+        .execute(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        transaction.commit().await.map_err(StateError::Storage)?;
+        Ok(())
     }
 
     pub async fn consume_host_authorization_decision(
@@ -1257,6 +1406,20 @@ impl ForgeStateStore {
                 .map_err(StateError::Storage)?;
             transaction.commit().await.map_err(StateError::Storage)?;
         }
+        if current < 4 {
+            let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+            for statement in OUTCOME_RESOLUTION_MIGRATIONS.iter().copied() {
+                sqlx::query(statement)
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?;
+            }
+            sqlx::query("PRAGMA user_version = 4")
+                .execute(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?;
+            transaction.commit().await.map_err(StateError::Storage)?;
+        }
         Ok(())
     }
 
@@ -1268,6 +1431,9 @@ impl ForgeStateStore {
         error_code: Option<String>,
     ) -> Result<(), StateError> {
         self.ensure_owner_healthy()?;
+        if let Some(code) = error_code.as_deref() {
+            validate_error_code(code)?;
+        }
         let update = sqlx::query(
             "UPDATE command_intents SET state=?2, result=?3, error_code=?4, owner_instance_id=NULL, lease_expires_at_ms=NULL, updated_at=CURRENT_TIMESTAMP WHERE identity=?1 AND state='in_flight' AND owner_instance_id=?5",
         )
@@ -1380,12 +1546,27 @@ fn secret_bearing_field(name: &str) -> bool {
         "token",
         "apikey",
         "privatekey",
+        "secretaccesskey",
         "credential",
         "cookie",
         "authorization",
     ]
     .iter()
     .any(|suffix| normalized.ends_with(suffix))
+}
+
+fn validate_error_code(value: &str) -> Result<(), StateError> {
+    let valid = !value.is_empty()
+        && value.len() <= 128
+        && value.as_bytes()[0].is_ascii_uppercase()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_uppercase() || byte.is_ascii_digit() || b"._-".contains(&byte)
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(StateError::InvalidKey)
+    }
 }
 
 fn looks_like_credential(value: &str) -> bool {
@@ -1582,6 +1763,7 @@ mod tests {
             "openai_api_key",
             "oauth_secret",
             "ssh_private_key",
+            "aws_secret_access_key",
         ] {
             let keyed_secret = json!({field: "opaque-reference-value"});
             assert!(matches!(
@@ -1624,6 +1806,21 @@ mod tests {
             .expect("in-flight intent remains without a receipt");
         assert_eq!(receipt.state, IdempotencyState::InFlight);
         assert_eq!(receipt.result, None);
+        assert!(matches!(
+            store
+                .fail_idempotent(&receipt_identity, IdempotencyState::UnknownOutcome, canary,)
+                .await,
+            Err(StateError::InvalidKey)
+        ));
+        assert_eq!(
+            store
+                .begin_idempotent(&receipt_identity)
+                .await
+                .expect("rejected error code does not persist")
+                .expect("intent remains active")
+                .state,
+            IdempotencyState::InFlight
+        );
 
         assert!(matches!(
             store
@@ -1722,7 +1919,7 @@ mod tests {
         let record = usage_record("request-1");
         let limit = usage_limit(100, 500);
 
-        assert_eq!(store.schema_version(), 3);
+        assert_eq!(store.schema_version(), 4);
         assert!(
             store
                 .record_resource_usage(&record, &limit)
@@ -1889,6 +2086,7 @@ mod tests {
                 state: IdempotencyState::InFlight,
                 result: None,
                 error_code: None,
+                latest_resolution: None,
             }
         );
 
@@ -2272,9 +2470,12 @@ mod tests {
             .await
             .expect("set v1 schema version");
 
-        store.migrate().await.expect("v1 to v2 migration");
+        store
+            .migrate()
+            .await
+            .expect("v1 to current schema migration");
         store.integrity_check().await.expect("migrated integrity");
-        assert_eq!(store.schema_version(), 3);
+        assert_eq!(store.schema_version(), 4);
         assert_eq!(
             store
                 .get_canonical("kernel", "migration.marker")
@@ -2288,6 +2489,56 @@ mod tests {
                 .await
                 .expect("usage table available after migration")
         );
+    }
+
+    #[tokio::test]
+    async fn schema_v3_migrates_outcome_resolution_ledger_without_losing_intents() {
+        let root = tempfile::tempdir().expect("temp directory");
+        let store = ForgeStateStore::open(root.path())
+            .await
+            .expect("store opens");
+        let identity = digest("schema-v3-intent");
+        assert!(
+            store
+                .begin_idempotent(&identity)
+                .await
+                .expect("intent")
+                .is_none()
+        );
+        store
+            .fail_idempotent(
+                &identity,
+                IdempotencyState::UnknownOutcome,
+                "FORGE.COMMAND.UNKNOWN_OUTCOME",
+            )
+            .await
+            .expect("mark ambiguous intent");
+        sqlx::query("DROP TABLE command_outcome_resolutions")
+            .execute(&store.pool)
+            .await
+            .expect("simulate schema v3");
+        sqlx::query("PRAGMA user_version = 3")
+            .execute(&store.pool)
+            .await
+            .expect("set v3 schema version");
+
+        store.migrate().await.expect("v3 to v4 migration");
+        assert_eq!(store.schema_version(), 4);
+        store.integrity_check().await.expect("migrated integrity");
+        let intent = store
+            .begin_idempotent(&identity)
+            .await
+            .expect("intent survives migration")
+            .expect("ambiguous intent");
+        assert_eq!(intent.state, IdempotencyState::UnknownOutcome);
+        assert_eq!(intent.latest_resolution, None);
+        let table: Option<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='command_outcome_resolutions'",
+        )
+        .fetch_optional(&store.pool)
+        .await
+        .expect("resolution table query");
+        assert_eq!(table.as_deref(), Some("command_outcome_resolutions"));
     }
 
     #[tokio::test]
@@ -2571,6 +2822,33 @@ mod tests {
             .put_canonical("kernel", "checkpoint", &json!("m00"))
             .await
             .expect("write state");
+        let command_identity = digest("backup-unknown-command");
+        assert!(
+            source
+                .begin_idempotent(&command_identity)
+                .await
+                .expect("begin command")
+                .is_none()
+        );
+        source
+            .fail_idempotent(
+                &command_identity,
+                IdempotencyState::UnknownOutcome,
+                "FORGE.COMMAND.PROVIDER_STATUS_UNKNOWN",
+            )
+            .await
+            .expect("record unknown outcome");
+        source
+            .reconcile_unknown_outcome(
+                &command_identity,
+                CommandOutcomeResolutionKind::EffectNotCommitted,
+                &digest("backup-provider-evidence"),
+                "resolution.backup",
+                &digest("backup-signed-decision"),
+                1_000,
+            )
+            .await
+            .expect("record signed outcome resolution");
         let backup_digest = source
             .backup_to(backup.path())
             .await
@@ -2591,6 +2869,19 @@ mod tests {
                 .await
                 .expect("read restored data"),
             Some(json!("m00"))
+        );
+        let restored_intent = restored
+            .begin_idempotent(&command_identity)
+            .await
+            .expect("read restored command intent")
+            .expect("restored command intent");
+        assert_eq!(restored_intent.state, IdempotencyState::FailedRetryable);
+        assert_eq!(
+            restored_intent
+                .latest_resolution
+                .expect("restored resolution evidence")
+                .kind,
+            CommandOutcomeResolutionKind::EffectNotCommitted
         );
     }
 

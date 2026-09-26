@@ -17,9 +17,9 @@ from typing import Any
 
 
 MANIFEST_PATH = ".engineering/evidence/FGE-004-M00/SOURCE-FINGERPRINTS.sha256"
-EXPECTED_ENTRY_COUNT = 68
+EXPECTED_ENTRY_COUNT = 72
 # SHA-256 of the admitted path sequence joined by NUL bytes, in manifest order.
-EXPECTED_PATH_SEQUENCE_SHA256 = "4e7866cb3d1f6dc10f0112d4e0cfd8c0aebe71b2f2fd07c5b185ee61c11a7ffa"
+EXPECTED_PATH_SEQUENCE_SHA256 = "27695644ae7e960ce85046843dd38058efd8e198fd071c08246d5a5e4aec1f95"
 ROW_PATTERN = re.compile(rb"^([0-9a-fA-F]{64})  (.+)$")
 OBJECT_ID_PATTERN = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 RESERVED_WINDOWS_NAMES = {
@@ -33,7 +33,6 @@ RESERVED_WINDOWS_NAMES = {
 EXCLUDED_SOURCE_PREFIXES = (
     ".engineering/evidence/",
     ".engineering/work-orders/",
-    ".engineering/scripts/",
 )
 GIT_COMMAND_TIMEOUT_SECONDS = 30
 MAX_GIT_INPUT_BYTES = 1 * 1024 * 1024
@@ -47,6 +46,13 @@ MAX_MANIFEST_PATH_BYTES = 4096
 MAX_MANIFEST_PATH_DEPTH = 64
 MAX_SOURCE_BLOB_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_BATCH_BYTES = 128 * 1024 * 1024
+BUILD_INPUT_PREFIXES = (b".cargo/", b".engineering/scripts/", b".github/workflows/", b"crates/")
+BUILD_INPUT_ROOT_PATHS = {
+    b"Cargo.toml",
+    b"Cargo.lock",
+    b"deny.toml",
+    b"rust-toolchain.toml",
+}
 
 
 class GitCommandError(Exception):
@@ -220,7 +226,7 @@ def safe_manifest_path(path_bytes: bytes) -> tuple[str | None, str | None]:
     if any(part.split(".", 1)[0].upper() in RESERVED_WINDOWS_NAMES for part in parts):
         return path, "reserved Windows device name is not allowed"
     if path == MANIFEST_PATH or path.startswith(EXCLUDED_SOURCE_PREFIXES):
-        return path, "manifest, evidence, work-order, and verifier files are outside the source set"
+        return path, "manifest, evidence, and work-order files are outside the source set"
     return path, None
 
 
@@ -467,9 +473,28 @@ def verify(repo_argument: str | None, revision: str) -> tuple[dict[str, Any], in
                 result["errors"].append(
                     {
                         "code": "path_list_mismatch",
-                        "message": "manifest paths or order differ from the admitted 68-path inventory",
+                        "message": f"manifest paths or order differ from the admitted {EXPECTED_ENTRY_COUNT}-path inventory",
                     }
                 )
+
+        manifest_paths = {path_bytes for _, _, path_bytes, _ in records}
+        required_build_inputs = {
+            path
+            for path in tree
+            if path in BUILD_INPUT_ROOT_PATHS
+            or any(path.startswith(prefix) for prefix in BUILD_INPUT_PREFIXES)
+        }
+        unlisted_build_inputs = sorted(required_build_inputs - manifest_paths)
+        if unlisted_build_inputs:
+            examples = [path.decode("utf-8", "backslashreplace") for path in unlisted_build_inputs[:8]]
+            result["errors"].append(
+                {
+                    "code": "unlisted_build_input",
+                    "count": len(unlisted_build_inputs),
+                    "examples": examples,
+                    "message": "tracked build, verification, or hosted-workflow inputs are absent from the source manifest",
+                }
+            )
 
         tree_path_folded: dict[str, set[bytes]] = {}
         for tree_path in tree:

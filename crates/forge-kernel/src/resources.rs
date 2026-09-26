@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
+use std::time::{Duration, Instant};
 
 use forge_state::{PersistedResourceUsageRecord, ResourceUsagePool};
 use serde::{Deserialize, Serialize};
@@ -78,6 +79,8 @@ pub enum ResourceError {
     InvalidRequest,
     #[error("resource lease was revoked")]
     Revoked,
+    #[error("resource lease expired")]
+    LeaseExpired,
 }
 
 #[derive(Clone)]
@@ -95,6 +98,8 @@ struct GovernorState {
     usage_records: Vec<ResourceUsageRecord>,
     accounted_usage: BTreeMap<String, PersistedResourceUsageRecord>,
     accounting_dirty: bool,
+    lease_expiries: BTreeMap<(Instant, u64), Weak<RootReservation>>,
+    next_lease_id: u64,
 }
 
 #[derive(Clone)]
@@ -116,6 +121,10 @@ struct RootReservation {
     governor: Weak<Mutex<GovernorState>>,
     amount: Mutex<ResourceVector>,
     pool: LeasePool,
+    expires_at: Instant,
+    lease_id: u64,
+    released: AtomicBool,
+    expired: AtomicBool,
 }
 
 #[derive(Clone, Copy)]
@@ -123,6 +132,9 @@ enum LeasePool {
     Ordinary,
     Survival,
 }
+
+const DEFAULT_RESOURCE_LEASE_TTL: Duration = Duration::from_secs(60);
+const MAX_TRACKED_RESOURCE_LEASES: usize = 100_000;
 
 impl ResourceGovernor {
     pub fn new(limit: ResourceVector) -> Self {
@@ -137,6 +149,8 @@ impl ResourceGovernor {
                 usage_records: Vec::new(),
                 accounted_usage: BTreeMap::new(),
                 accounting_dirty: false,
+                lease_expiries: BTreeMap::new(),
+                next_lease_id: 1,
             })),
         }
     }
@@ -159,6 +173,8 @@ impl ResourceGovernor {
                 usage_records: Vec::new(),
                 accounted_usage: BTreeMap::new(),
                 accounting_dirty: false,
+                lease_expiries: BTreeMap::new(),
+                next_lease_id: 1,
             })),
         })
     }
@@ -250,6 +266,14 @@ impl ResourceGovernor {
         lock_recover(&self.inner).usage_records.clone()
     }
 
+    /// Reclaims reservations whose bounded monotonic lease lifetime has elapsed.
+    /// New lease attempts invoke this automatically; hosts may also call it from a
+    /// periodic maintenance task while the governor is otherwise idle.
+    pub fn reap_expired_leases(&self) -> usize {
+        let mut state = lock_recover(&self.inner);
+        reap_expired_locked(&mut state, Instant::now())
+    }
+
     pub(crate) fn accounted_usage_record(
         &self,
         usage_id: &str,
@@ -282,14 +306,34 @@ impl ResourceGovernor {
         requested: ResourceVector,
         pool: LeasePool,
     ) -> Result<ResourceLease, ResourceError> {
+        self.try_lease_from_pool_with_ttl(owner, requested, pool, DEFAULT_RESOURCE_LEASE_TTL)
+    }
+
+    fn try_lease_from_pool_with_ttl(
+        &self,
+        owner: impl Into<String>,
+        requested: ResourceVector,
+        pool: LeasePool,
+        ttl: Duration,
+    ) -> Result<ResourceLease, ResourceError> {
         let owner = owner.into();
         if !valid_token(&owner) || requested == ResourceVector::default() {
             return Err(ResourceError::InvalidRequest);
         }
         let mut state = lock_recover(&self.inner);
+        reap_expired_locked(&mut state, Instant::now());
         if state.accounting_dirty {
             return Err(ResourceError::AccountingReconciliationRequired);
         }
+        if ttl > DEFAULT_RESOURCE_LEASE_TTL
+            || state.lease_expiries.len() >= MAX_TRACKED_RESOURCE_LEASES
+        {
+            return Err(ResourceError::InvalidRequest);
+        }
+        let lease_id = state.next_lease_id;
+        let next_lease_id = lease_id
+            .checked_add(1)
+            .ok_or(ResourceError::InvalidRequest)?;
         let (limit, consumed, reserved) = match pool {
             LeasePool::Ordinary => (
                 state.ordinary_limit,
@@ -312,11 +356,20 @@ impl ResourceGovernor {
             return Err(ResourceError::BudgetExceeded);
         }
         *reserved = next;
+        state.next_lease_id = next_lease_id;
+        let expires_at = Instant::now() + ttl;
         let reservation = Arc::new(RootReservation {
             governor: Arc::downgrade(&self.inner),
             amount: Mutex::new(requested),
             pool,
+            expires_at,
+            lease_id,
+            released: AtomicBool::new(false),
+            expired: AtomicBool::new(false),
         });
+        state
+            .lease_expiries
+            .insert((expires_at, lease_id), Arc::downgrade(&reservation));
         Ok(ResourceLease {
             node: Arc::new(LeaseNode {
                 owner,
@@ -356,7 +409,11 @@ impl ResourceLease {
             .governor
             .upgrade()
             .ok_or(ResourceError::InvalidRequest)?;
-        let state = lock_recover(&governor);
+        let mut state = lock_recover(&governor);
+        reap_expired_locked(&mut state, Instant::now());
+        if self.node.reservation.expired.load(Ordering::Acquire) {
+            return Err(ResourceError::LeaseExpired);
+        }
         if state.accounting_dirty {
             return Err(ResourceError::AccountingReconciliationRequired);
         }
@@ -391,7 +448,16 @@ impl ResourceLease {
             .governor
             .upgrade()
             .ok_or(ResourceError::InvalidRequest)?;
-        let state = lock_recover(&governor);
+        let mut state = lock_recover(&governor);
+        reap_expired_locked(&mut state, Instant::now());
+        if self.node.reservation.expired.load(Ordering::Acquire) {
+            return Err(ResourceError::LeaseExpired);
+        }
+        if self.node.reservation.expires_at <= Instant::now()
+            || self.node.reservation.expired.load(Ordering::Acquire)
+        {
+            return Err(ResourceError::LeaseExpired);
+        }
         if state.accounting_dirty {
             return Err(ResourceError::AccountingReconciliationRequired);
         }
@@ -438,7 +504,11 @@ impl ResourceLease {
             .governor
             .upgrade()
             .ok_or(ResourceError::InvalidRequest)?;
-        let state = lock_recover(&governor);
+        let mut state = lock_recover(&governor);
+        reap_expired_locked(&mut state, Instant::now());
+        if self.node.reservation.expired.load(Ordering::Acquire) {
+            return Err(ResourceError::LeaseExpired);
+        }
         if state.accounting_dirty {
             return Err(ResourceError::AccountingReconciliationRequired);
         }
@@ -502,6 +572,10 @@ impl ResourceLease {
             .upgrade()
             .ok_or(ResourceError::InvalidRequest)?;
         let mut state = lock_recover(&governor);
+        reap_expired_locked(&mut state, Instant::now());
+        if self.node.reservation.expired.load(Ordering::Acquire) {
+            return Err(ResourceError::LeaseExpired);
+        }
         if state.accounting_dirty {
             return Err(ResourceError::AccountingReconciliationRequired);
         }
@@ -594,7 +668,11 @@ impl ResourceLease {
             .governor
             .upgrade()
             .ok_or(ResourceError::InvalidRequest)?;
-        let state = lock_recover(&governor);
+        let mut state = lock_recover(&governor);
+        reap_expired_locked(&mut state, Instant::now());
+        if self.node.reservation.expired.load(Ordering::Acquire) {
+            return Err(ResourceError::LeaseExpired);
+        }
         if state.accounting_dirty {
             return Err(ResourceError::AccountingReconciliationRequired);
         }
@@ -651,15 +729,60 @@ impl Drop for RootReservation {
     fn drop(&mut self) {
         if let Some(governor) = self.governor.upgrade() {
             let mut state = lock_recover(&governor);
-            let reserved = match self.pool {
-                LeasePool::Ordinary => &mut state.ordinary_reserved,
-                LeasePool::Survival => &mut state.survival_reserved,
-            };
-            if let Some(next) = reserved.checked_sub(*lock_recover(&self.amount)) {
-                *reserved = next;
-            }
+            state
+                .lease_expiries
+                .remove(&(self.expires_at, self.lease_id));
+            self.release_locked(&mut state, false);
         }
     }
+}
+
+impl RootReservation {
+    fn release_locked(&self, state: &mut GovernorState, expired: bool) {
+        if self
+            .released
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+        if expired {
+            self.expired.store(true, Ordering::Release);
+        }
+        let amount = *lock_recover(&self.amount);
+        let current = match self.pool {
+            LeasePool::Ordinary => state.ordinary_reserved,
+            LeasePool::Survival => state.survival_reserved,
+        };
+        if let Some(next) = current.checked_sub(amount) {
+            match self.pool {
+                LeasePool::Ordinary => state.ordinary_reserved = next,
+                LeasePool::Survival => state.survival_reserved = next,
+            }
+        } else {
+            state.accounting_dirty = true;
+        }
+    }
+}
+
+fn reap_expired_locked(state: &mut GovernorState, now: Instant) -> usize {
+    let mut reclaimed = 0;
+    while state
+        .lease_expiries
+        .first_key_value()
+        .is_some_and(|((expires_at, _), _)| *expires_at <= now)
+    {
+        let Some((_, reservation)) = state.lease_expiries.pop_first() else {
+            break;
+        };
+        if let Some(reservation) = reservation.upgrade()
+            && !reservation.released.load(Ordering::Acquire)
+        {
+            reservation.release_locked(state, true);
+            reclaimed += 1;
+        }
+    }
+    reclaimed
 }
 
 fn valid_token(value: &str) -> bool {
@@ -728,6 +851,52 @@ mod tests {
         assert_eq!(governor.reserved().cpu_millis, 80);
         drop(parent);
         assert_eq!(governor.reserved().cpu_millis, 0);
+    }
+
+    #[test]
+    fn expired_lease_reclaims_capacity_while_stale_handles_fail_closed() {
+        let governor = ResourceGovernor::new(ResourceVector {
+            tokens: 10,
+            ..Default::default()
+        });
+        let expired = governor
+            .try_lease_from_pool_with_ttl(
+                "expired",
+                ResourceVector {
+                    tokens: 10,
+                    ..Default::default()
+                },
+                LeasePool::Ordinary,
+                Duration::ZERO,
+            )
+            .expect("zero-TTL test lease");
+        assert_eq!(governor.reserved().tokens, 10);
+        assert_eq!(governor.reap_expired_leases(), 1);
+        assert_eq!(governor.reserved().tokens, 0);
+        assert_eq!(expired.ensure_active(), Err(ResourceError::LeaseExpired));
+        assert_eq!(
+            expired.charge(
+                "expired.use",
+                ResourceVector {
+                    tokens: 1,
+                    ..Default::default()
+                },
+                0,
+            ),
+            Err(ResourceError::LeaseExpired)
+        );
+        let replacement = governor
+            .try_lease(
+                "replacement",
+                ResourceVector {
+                    tokens: 10,
+                    ..Default::default()
+                },
+            )
+            .expect("expired capacity is available again");
+        assert_eq!(governor.reserved().tokens, 10);
+        drop((expired, replacement));
+        assert_eq!(governor.reserved().tokens, 0);
     }
 
     #[test]

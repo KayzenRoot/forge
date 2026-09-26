@@ -532,7 +532,7 @@ mod tests {
             );
         }
         assert_eq!(boot.report.database_integrity, "ok");
-        assert_eq!(boot.report.database_schema_version, 3);
+        assert_eq!(boot.report.database_schema_version, 4);
     }
 
     #[test]

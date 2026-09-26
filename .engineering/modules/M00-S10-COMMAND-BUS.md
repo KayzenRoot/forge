@@ -58,6 +58,8 @@ Before dispatch: validates contract, permissions, deadline, resources, capabilit
 ### Unknown Outcome Resolver (UOR)
 Handles the dangerous case where Forge loses contact after sending a nontrivial external side effect and cannot know whether it committed. It queries provider status/idempotency evidence or escalates; it MUST NOT blindly retry.
 
+M00 records a reconciliation only when the trusted host signs a short-lived decision bound to the exact command identity, subject, action, scope, resource and run, plus an evidence fingerprint. `effect_not_committed` can make the intent retryable, but a later attempt still needs a fresh command authorization. `effect_committed` is recorded as externally resolved while the command remains blocked until local state/outbox finalization is proven. `inconclusive` preserves the unknown outcome. A payload claim or unsigned provider response cannot change these states.
+
 ### Command Result Proof (CRP)
 Evidence record binding command/input fingerprints, provider, snapshots, attempts, timing, result/error, state/effect commit references and emitted event IDs.
 

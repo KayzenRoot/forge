@@ -172,3 +172,10 @@ stores an owner instance and bounded lease with an active intent. A second live 
 that intent; reopening after a missing/stale owner or expired lease marks it `unknown_outcome`.
 Commit CAS, durable outbox events and the final receipt are one transaction. A failed transaction
 leaves the intent recoverable and never triggers an automatic repeat of an unknown external effect.
+
+An ambiguous external outcome can be changed only by `CommandBus::reconcile_unknown_outcome` with
+a host-signed, short-lived resolution bound to the exact command identity, principal, authorization
+scope, resource and run. The durable decision ID is single-use. A verified `effect_not_committed`
+result makes a later attempt eligible but does not grant command authority; that retry requires a
+fresh command decision. `effect_committed` waits for local finalization and `inconclusive` remains
+blocked, so neither permits an external replay.

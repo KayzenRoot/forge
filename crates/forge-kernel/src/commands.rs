@@ -6,7 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use forge_contracts::{ContractId, ContractVersion, ValidatedContract};
 use forge_state::{
-    CanonicalStateTransition, ForgeStateStore, IdempotencyState, StateError, StoredEvent,
+    CanonicalStateTransition, CommandOutcomeResolutionKind, ForgeStateStore, IdempotencyState,
+    StateError, StoredEvent,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -101,6 +102,30 @@ pub struct HostAuthorizationDecision {
     pub mac: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostOutcomeResolutionClaims {
+    pub decision_id: String,
+    pub subject: String,
+    pub action: String,
+    pub scope: String,
+    pub resource_id: String,
+    pub run_id: String,
+    pub command_identity: String,
+    pub outcome: CommandOutcomeResolutionKind,
+    pub evidence_fingerprint: String,
+    pub valid_from_ms: u64,
+    pub expires_at_ms: u64,
+    pub permissions: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostOutcomeResolutionDecision {
+    pub claims: HostOutcomeResolutionClaims,
+    pub mac: String,
+}
+
 #[derive(Clone)]
 pub struct HostDecisionSigner {
     key: [u8; 32],
@@ -124,6 +149,19 @@ impl HostDecisionSigner {
         validate_host_claims(&claims)?;
         let bytes = serde_json::to_vec(&claims).map_err(|_| CommandError::InvalidRequest)?;
         Ok(HostAuthorizationDecision {
+            claims,
+            mac: blake3::keyed_hash(&self.key, &bytes).to_hex().to_string(),
+        })
+    }
+
+    /// Signs a host-reviewed provider-status or escalation result for one command identity.
+    pub fn sign_outcome_resolution(
+        &self,
+        claims: HostOutcomeResolutionClaims,
+    ) -> Result<HostOutcomeResolutionDecision, CommandError> {
+        validate_outcome_resolution_claims(&claims)?;
+        let bytes = serde_json::to_vec(&claims).map_err(|_| CommandError::InvalidRequest)?;
+        Ok(HostOutcomeResolutionDecision {
             claims,
             mac: blake3::keyed_hash(&self.key, &bytes).to_hex().to_string(),
         })
@@ -160,9 +198,36 @@ impl HostDecisionVerifier {
         }
         Ok(blake3::hash(&bytes).to_hex().to_string())
     }
+
+    fn verify_outcome_resolution(
+        &self,
+        decision: &HostOutcomeResolutionDecision,
+        now_ms: u64,
+    ) -> Result<String, CommandError> {
+        validate_outcome_resolution_claims(&decision.claims)?;
+        if decision.claims.valid_from_ms > now_ms
+            || decision.claims.expires_at_ms < now_ms
+            || decision
+                .claims
+                .expires_at_ms
+                .saturating_sub(decision.claims.valid_from_ms)
+                > HOST_DECISION_MAX_TTL_MS
+        {
+            return Err(CommandError::PermissionDenied);
+        }
+        let bytes =
+            serde_json::to_vec(&decision.claims).map_err(|_| CommandError::InvalidRequest)?;
+        let expected = blake3::keyed_hash(&self.key, &bytes).to_hex().to_string();
+        if !constant_time_hex_eq(&decision.mac, &expected) {
+            return Err(CommandError::PermissionDenied);
+        }
+        Ok(blake3::hash(&bytes).to_hex().to_string())
+    }
 }
 
 const HOST_DECISION_MAX_TTL_MS: u64 = 300_000;
+const OUTCOME_RESOLUTION_ACTION: &str = "forge.command.resolve_unknown_outcome";
+const OUTCOME_RESOLUTION_PERMISSION: &str = "command.outcome.resolve";
 
 #[derive(Clone)]
 pub struct CommandContext {
@@ -478,6 +543,9 @@ impl CommandBus {
             }
             if prior.state != IdempotencyState::FailedRetryable
                 || registration.side_effect != SideEffectClass::Pure
+                    && prior.latest_resolution.as_ref().is_none_or(|resolution| {
+                        resolution.kind != CommandOutcomeResolutionKind::EffectNotCommitted
+                    })
                 || !store.retry_idempotent(identity).await?
             {
                 return Err(CommandError::Duplicate);
@@ -671,6 +739,7 @@ impl CommandBus {
         }
         let mut durable_events = Vec::new();
         let mut durable_event_ids = Vec::new();
+        let mut committed_durable_events = Vec::new();
         let mut ephemeral_events = Vec::new();
         if !output.pending_events.is_empty() {
             let event_bus = self
@@ -720,6 +789,7 @@ impl CommandBus {
                             payload: serde_json::to_value(&event)
                                 .map_err(|_| CommandError::InvalidRequest)?,
                         });
+                        committed_durable_events.push(event);
                     }
                 }
             }
@@ -773,13 +843,8 @@ impl CommandBus {
         }
         let mut event_ids = durable_event_ids;
         if let Some(event_bus) = self.event_bus.as_ref() {
-            for event in output.pending_events.iter().filter(|event| {
-                matches!(
-                    event.class,
-                    EventClass::DurableLocal | EventClass::Integration | EventClass::AuditEvidence
-                )
-            }) {
-                let _ = event_bus.publish_committed(event.clone());
+            for event in committed_durable_events {
+                let _ = event_bus.publish_committed(event);
             }
             for event in ephemeral_events {
                 if let Ok(receipt) = event_bus.publish_ephemeral(event) {
@@ -794,6 +859,73 @@ impl CommandBus {
             result_fingerprint,
             event_ids,
         })
+    }
+
+    /// Records a host-verified provider query or escalation result for an ambiguous command.
+    /// An `EffectNotCommitted` result only makes a later, freshly authorized command attempt
+    /// eligible for retry. A confirmed effect remains blocked pending local finalization.
+    pub async fn reconcile_unknown_outcome(
+        &self,
+        store: &ForgeStateStore,
+        request: &CommandRequest,
+        decision: &HostOutcomeResolutionDecision,
+    ) -> Result<(), CommandError> {
+        let verifier = self
+            .host_decision_verifier
+            .as_ref()
+            .ok_or(CommandError::PermissionDenied)?;
+        let now_ms = host_time_ms()?;
+        let decision_fingerprint = verifier.verify_outcome_resolution(decision, now_ms)?;
+        let (registration, _) = {
+            let registry = self
+                .registry
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !registry.sealed {
+                return Err(CommandError::NotSealed);
+            }
+            registry
+                .handlers
+                .get(request.contract_id.as_str())
+                .cloned()
+                .ok_or(CommandError::NoHandler)?
+        };
+        if registration.side_effect == SideEffectClass::Pure
+            || registration.idempotency == IdempotencyMode::None
+            || request.sensitivity == SensitivityClass::Secret
+            || request.contract_id != registration.contract.definition().id
+            || request.contract_version != registration.contract.definition().version
+            || registration.contract.validate(&request.payload).is_err()
+        {
+            return Err(CommandError::InvalidRequest);
+        }
+        let input_fingerprint = blake3::hash(
+            &serde_json::to_vec(&request.payload).map_err(|_| CommandError::InvalidRequest)?,
+        )
+        .to_hex()
+        .to_string();
+        let identity = idempotency_identity(request, &registration, &input_fingerprint)?
+            .ok_or(CommandError::IdempotencyRequired)?;
+        let claims = &decision.claims;
+        if claims.command_identity != identity
+            || claims.subject != request.principal_id
+            || claims.scope != request.authorization_scope
+            || claims.resource_id != request.resource_id
+            || claims.run_id != request.run_id
+        {
+            return Err(CommandError::PermissionDenied);
+        }
+        store
+            .reconcile_unknown_outcome(
+                &identity,
+                claims.outcome,
+                &claims.evidence_fingerprint,
+                &claims.decision_id,
+                &decision_fingerprint,
+                now_ms,
+            )
+            .await?;
+        Ok(())
     }
 }
 
@@ -944,6 +1076,27 @@ fn validate_host_claims(claims: &HostAuthorizationClaims) -> Result<(), CommandE
     Ok(())
 }
 
+fn validate_outcome_resolution_claims(
+    claims: &HostOutcomeResolutionClaims,
+) -> Result<(), CommandError> {
+    if !valid_token(&claims.decision_id)
+        || !valid_token(&claims.subject)
+        || claims.action != OUTCOME_RESOLUTION_ACTION
+        || !valid_token(&claims.scope)
+        || !valid_token(&claims.resource_id)
+        || !valid_token(&claims.run_id)
+        || !valid_digest(&claims.command_identity)
+        || !valid_digest(&claims.evidence_fingerprint)
+        || claims.expires_at_ms <= claims.valid_from_ms
+        || claims.expires_at_ms.saturating_sub(claims.valid_from_ms) > HOST_DECISION_MAX_TTL_MS
+        || claims.permissions.len() != 1
+        || !claims.permissions.contains(OUTCOME_RESOLUTION_PERMISSION)
+    {
+        return Err(CommandError::InvalidRequest);
+    }
+    Ok(())
+}
+
 fn host_time_ms() -> Result<u64, CommandError> {
     let value = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1037,6 +1190,34 @@ mod tests {
             expires_at_ms: now.saturating_add(60_000),
             permissions,
         }
+    }
+
+    fn outcome_resolution_decision(
+        signer: &HostDecisionSigner,
+        request: &CommandRequest,
+        identity: &str,
+        decision_id: &str,
+        outcome: CommandOutcomeResolutionKind,
+    ) -> HostOutcomeResolutionDecision {
+        let now = host_time_ms().expect("clock");
+        signer
+            .sign_outcome_resolution(HostOutcomeResolutionClaims {
+                decision_id: decision_id.into(),
+                subject: request.principal_id.clone(),
+                action: OUTCOME_RESOLUTION_ACTION.into(),
+                scope: request.authorization_scope.clone(),
+                resource_id: request.resource_id.clone(),
+                run_id: request.run_id.clone(),
+                command_identity: identity.into(),
+                outcome,
+                evidence_fingerprint: digest(&format!("{decision_id}:{outcome:?}")),
+                valid_from_ms: now.saturating_sub(1_000),
+                expires_at_ms: now.saturating_add(60_000),
+                permissions: [OUTCOME_RESOLUTION_PERMISSION.to_owned()]
+                    .into_iter()
+                    .collect(),
+            })
+            .expect("signed outcome resolution")
     }
 
     fn registration(mode: IdempotencyMode, side_effect: SideEffectClass) -> CommandRegistration {
@@ -1371,6 +1552,256 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unknown_external_outcome_requires_signed_reconciliation_and_fresh_retry_authority() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let store = ForgeStateStore::open(root.path()).await.expect("store");
+        let (bus, signer) = trusted_bus(4);
+        let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let handler_attempts = Arc::clone(&attempts);
+        bus.register(
+            registration(
+                IdempotencyMode::CallerKeyed,
+                SideEffectClass::IdempotentExternal,
+            ),
+            Arc::new(move |_context, payload| {
+                handler_attempts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                Box::pin(async move {
+                    Ok(HandlerOutput {
+                        value: payload,
+                        commit_evidence_fingerprint: Some(digest("provider-committed")),
+                        pending_events: vec![],
+                        state_update: None,
+                    })
+                })
+            }),
+        )
+        .expect("register external command");
+        bus.seal();
+        let request = request();
+        let registration = registration(
+            IdempotencyMode::CallerKeyed,
+            SideEffectClass::IdempotentExternal,
+        );
+        let input_fingerprint =
+            blake3::hash(&serde_json::to_vec(&request.payload).expect("serialize request"))
+                .to_hex()
+                .to_string();
+        let identity = idempotency_identity(&request, &registration, &input_fingerprint)
+            .expect("identity construction")
+            .expect("caller-keyed identity");
+        assert!(
+            store
+                .begin_idempotent(&identity)
+                .await
+                .expect("begin")
+                .is_none()
+        );
+        store
+            .fail_idempotent(
+                &identity,
+                IdempotencyState::UnknownOutcome,
+                "FORGE.COMMAND.PROVIDER_STATUS_UNKNOWN",
+            )
+            .await
+            .expect("mark ambiguous external outcome");
+
+        let mut forged = outcome_resolution_decision(
+            &signer,
+            &request,
+            &identity,
+            "resolution.forged",
+            CommandOutcomeResolutionKind::EffectNotCommitted,
+        );
+        forged.mac = "0".repeat(64);
+        assert!(matches!(
+            bus.reconcile_unknown_outcome(&store, &request, &forged)
+                .await,
+            Err(CommandError::PermissionDenied)
+        ));
+        let mismatched_request = CommandRequest {
+            resource_id: "project.other".into(),
+            ..request.clone()
+        };
+        let mismatched = outcome_resolution_decision(
+            &signer,
+            &mismatched_request,
+            &identity,
+            "resolution.cross-resource",
+            CommandOutcomeResolutionKind::EffectNotCommitted,
+        );
+        assert!(matches!(
+            bus.reconcile_unknown_outcome(&store, &mismatched_request, &mismatched)
+                .await,
+            Err(CommandError::PermissionDenied)
+        ));
+
+        let resolution = outcome_resolution_decision(
+            &signer,
+            &request,
+            &identity,
+            "resolution.not-committed",
+            CommandOutcomeResolutionKind::EffectNotCommitted,
+        );
+        bus.reconcile_unknown_outcome(&store, &request, &resolution)
+            .await
+            .expect("signed provider non-commit result reconciles intent");
+        let reconciled = store
+            .begin_idempotent(&identity)
+            .await
+            .expect("read reconciled command")
+            .expect("command intent");
+        assert_eq!(reconciled.state, IdempotencyState::FailedRetryable);
+        assert_eq!(
+            reconciled
+                .latest_resolution
+                .as_ref()
+                .expect("resolution evidence")
+                .kind,
+            CommandOutcomeResolutionKind::EffectNotCommitted
+        );
+        assert_eq!(
+            reconciled
+                .latest_resolution
+                .as_ref()
+                .expect("resolution evidence")
+                .evidence_fingerprint,
+            resolution.claims.evidence_fingerprint
+        );
+        assert!(matches!(
+            bus.reconcile_unknown_outcome(&store, &request, &resolution)
+                .await,
+            Err(CommandError::State(StateError::StateConflict))
+        ));
+
+        let retry_authorization = decision(
+            &signer,
+            &request,
+            "decision.reconciled-retry",
+            ["state.write".to_owned()].into_iter().collect(),
+        );
+        let outcome = bus
+            .execute(
+                &store,
+                request.clone(),
+                &retry_authorization,
+                CancellationToken::new(),
+                Deadline::after(std::time::Duration::from_secs(2)),
+                None,
+            )
+            .await
+            .expect("freshly authorized retry after provider proved no commit");
+        assert!(!outcome.replayed);
+        assert_eq!(attempts.load(std::sync::atomic::Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn committed_or_inconclusive_reconciliation_never_replays_an_external_effect() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let store = ForgeStateStore::open(root.path()).await.expect("store");
+        let (bus, signer) = trusted_bus(4);
+        let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let handler_attempts = Arc::clone(&attempts);
+        bus.register(
+            registration(
+                IdempotencyMode::CallerKeyed,
+                SideEffectClass::IrreversibleExternal,
+            ),
+            Arc::new(move |_context, payload| {
+                handler_attempts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                Box::pin(async move {
+                    Ok(HandlerOutput {
+                        value: payload,
+                        commit_evidence_fingerprint: Some(digest("effect")),
+                        pending_events: vec![],
+                        state_update: None,
+                    })
+                })
+            }),
+        )
+        .expect("register irreversible command");
+        bus.seal();
+        let mut request = request();
+        let registration = registration(
+            IdempotencyMode::CallerKeyed,
+            SideEffectClass::IrreversibleExternal,
+        );
+
+        for (key, kind, expected_code) in [
+            (
+                "caller-key-committed",
+                CommandOutcomeResolutionKind::EffectCommitted,
+                "FORGE.COMMAND.EFFECT_COMMITTED_REQUIRES_FINALIZATION",
+            ),
+            (
+                "caller-key-inconclusive",
+                CommandOutcomeResolutionKind::Inconclusive,
+                "FORGE.COMMAND.RECONCILIATION_INCONCLUSIVE",
+            ),
+        ] {
+            request.idempotency_key = Some(key.into());
+            let input_fingerprint =
+                blake3::hash(&serde_json::to_vec(&request.payload).expect("serialize request"))
+                    .to_hex()
+                    .to_string();
+            let identity = idempotency_identity(&request, &registration, &input_fingerprint)
+                .expect("identity construction")
+                .expect("caller-keyed identity");
+            assert!(
+                store
+                    .begin_idempotent(&identity)
+                    .await
+                    .expect("begin")
+                    .is_none()
+            );
+            store
+                .fail_idempotent(
+                    &identity,
+                    IdempotencyState::UnknownOutcome,
+                    "FORGE.COMMAND.PROVIDER_STATUS_UNKNOWN",
+                )
+                .await
+                .expect("mark unknown outcome");
+            let resolution = outcome_resolution_decision(
+                &signer,
+                &request,
+                &identity,
+                &format!("resolution.{}", key.replace('-', ".")),
+                kind,
+            );
+            bus.reconcile_unknown_outcome(&store, &request, &resolution)
+                .await
+                .expect("record verified status or escalation");
+            let prior = store
+                .begin_idempotent(&identity)
+                .await
+                .expect("read resolved status")
+                .expect("intent");
+            assert_eq!(prior.state, IdempotencyState::UnknownOutcome);
+            assert_eq!(prior.error_code.as_deref(), Some(expected_code));
+            assert_eq!(prior.latest_resolution.expect("audit record").kind, kind);
+            let authorization = decision(
+                &signer,
+                &request,
+                &format!("decision.blocked.{}", key.replace('-', ".")),
+                ["state.write".to_owned()].into_iter().collect(),
+            );
+            assert!(matches!(
+                bus.execute(
+                    &store,
+                    request.clone(),
+                    &authorization,
+                    CancellationToken::new(),
+                    Deadline::after(std::time::Duration::from_secs(1)),
+                    None,
+                )
+                .await,
+                Err(CommandError::UnknownOutcome)
+            ));
+        }
+        assert_eq!(attempts.load(std::sync::atomic::Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
     async fn sensitive_results_are_not_saved_as_replayable_payloads() {
         let root = tempfile::tempdir().expect("temp dir");
         let store = ForgeStateStore::open(root.path()).await.expect("store");
@@ -1544,6 +1975,9 @@ mod tests {
         let event_bus = Arc::new(
             EventBus::new([(crate::events::EventLane::DurableDomain, 8)]).expect("event bus"),
         );
+        let mut event_receiver = event_bus
+            .subscribe(crate::events::EventLane::DurableDomain)
+            .expect("event subscriber");
         let key = [0x5a; 32];
         let signer = HostDecisionSigner::new(key);
         let bus = CommandBus::with_event_bus_and_host_decision_verifier(
@@ -1617,6 +2051,25 @@ mod tests {
             .expect("replay");
         assert_eq!(first.event_ids.len(), 1);
         assert_eq!(replay.event_ids, first.event_ids);
-        assert_eq!(store.pending_events(10).await.expect("outbox").len(), 1);
+        let pending = store.pending_events(10).await.expect("outbox");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].event_id, first.event_ids[0]);
+        assert_eq!(
+            event_receiver.try_recv().expect("published event").event_id,
+            pending[0].event_id
+        );
+        assert!(
+            event_bus
+                .acknowledge(&store, &first.event_ids[0])
+                .await
+                .expect("acknowledge committed command event")
+        );
+        assert!(
+            store
+                .pending_events(10)
+                .await
+                .expect("acknowledged outbox")
+                .is_empty()
+        );
     }
 }

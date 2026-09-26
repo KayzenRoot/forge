@@ -180,7 +180,12 @@ impl EventBus {
     }
 
     /// Publishes an event whose durable outbox row was committed with its command receipt.
-    pub fn publish_committed(&self, event: EventEnvelope) -> Result<PublishReceipt, EventError> {
+    ///
+    /// This is restricted to trusted in-crate command code after the state transaction commits.
+    pub(crate) fn publish_committed(
+        &self,
+        event: EventEnvelope,
+    ) -> Result<PublishReceipt, EventError> {
         self.validate_durable_before_commit(&event)?;
         let sender = self.lanes.get(&event.lane).ok_or(EventError::MissingLane)?;
         let event_id = event.event_id.clone();
