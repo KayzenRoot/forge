@@ -1,6 +1,6 @@
 # M00-S08 — State Store & Recovery Foundation
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S07
 
@@ -14,6 +14,7 @@ Forge MUST distinguish:
 3. CACHE — disposable/rebuildable acceleration state.
 4. EPHEMERAL — process/session state that must not be relied upon after restart.
 5. EXTERNAL_REFERENCE — identifiers/pointers to state owned by another system, never silently copied into Forge authority.
+6. RESOURCE_USAGE — immutable canonical S20 records with stable replay identity and project/work-order/execution/capability/provider attribution.
 
 A value cannot change state class implicitly.
 
@@ -27,6 +28,7 @@ SQLite is not assumed to be the forever solution for every future distributed wo
 - Large immutable blobs/artifacts: content-addressed object/file layer when appropriate.
 - Cache: separate namespace/tables/files with explicit eviction/rebuild semantics.
 - Evidence: append-oriented records plus content fingerprints; immutable artifacts may live in CAS.
+- Resource usage: append-only SQLite ledger owned by S08; exact replay is a no-op while the live governor is healthy, and identity/content drift is rejected. The shared pool ceiling is enforced atomically with the durable insert. Native boot applies the live lease charge only after insertion while holding the per-lease accounting gate; an interrupted or ambiguous transition marks the in-memory governor as requiring recovery and blocks new authority until boot replays the ledger.
 - Secrets: never ordinary state rows; only secure references/metadata.
 
 ## Proprietary technologies
@@ -162,3 +164,18 @@ HIVE remains owner of its own knowledge/memory stores. Core and IRIS own their d
 
 ## Acceptance criteria
 S08 is accepted when Forge has an explicit state taxonomy, local transactional authority, module ownership, crash-consistency/recovery semantics, cache disposability, evidence integrity, migration discipline and a storage abstraction that preserves Sovereign Standalone Mode without pretending SQLite must solve every future distributed problem.
+
+## C03 durable command commit boundary
+
+The candidate schema is v3. It records command owner/lease state, authorization-decision replay and
+revocation state, and incremental shared resource-ledger totals. A durable command's canonical
+compare-and-set transition, outbox events, and idempotency receipt commit in one SQLite transaction.
+The event bus is notified only after commit; pending outbox rows are the recovery source. An
+`in_flight` intent remains live while its owner heartbeat and lease are current. A missing/stale
+owner or expired lease becomes `unknown_outcome`, which must be reconciled and is never blindly
+retried. Opening a second store does not invalidate another live owner's intent.
+
+Ordinary persisted payloads, including evidence, command results, canonical state, durable events,
+resource-use metadata, and cache values, reject secret-bearing field names and credential-like
+strings before serialization. Rejection messages do not echo payload values. Secrets belong in
+secure references, not ordinary rows or their backups.

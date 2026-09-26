@@ -1,6 +1,6 @@
 # M00-S22 — Test-Proof Foundation
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S21
 
@@ -256,3 +256,21 @@ Forbidden:
 
 ## Acceptance criteria
 S22 is accepted when Forge can compile change/risk into explicit proof obligations, preserve still-valid evidence, compute a minimal sound proof set, escalate under uncertainty, retain counterexamples, expose proof gaps and produce a certification evidence capsule proving the exact M00 head against its Definition of Done.
+
+## C03 exact-change and backend receipt gate
+
+`ChangeAssessment::from_git` obtains `git rev-parse --show-object-format`, resolves base and HEAD
+as real commit objects, requires the supplied exact head to be current HEAD and the base to be its
+ancestor, and derives paths from the exact Git diff. The subprocess has fixed arguments, no shell,
+no lazy fetch, a 15-second timeout, bounded output, a 4,096-path limit, and strict path validation.
+SHA-1 repositories require 40-hex commit IDs and SHA-256 repositories require 64-hex IDs.
+Callers cannot construct an assessment with an omitted path list. An empty range, missing source
+fingerprint, absent graph, incomplete graph, missing seed, or low-confidence edge broadens the
+obligation set.
+
+A `Passed` node can be inserted only with a trusted backend receipt that binds proof ID/kind,
+artifact fingerprint, Git object format and exact head, change-set fingerprint, dependencies,
+obligations, input/environment fingerprints, backend run, and executor/reviewer session IDs.
+Review nodes require distinct session IDs. Token syntax is only structural validation: the host
+backend must resolve those IDs to real read-only dispatch sessions before signing. A role label,
+directory, path, or agent display name is not a session ID. Rejected or stale bindings never certify.

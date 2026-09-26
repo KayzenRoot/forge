@@ -1,6 +1,6 @@
 # M00-S12 — Idempotency, Cancellation & Deadline Control
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S11
 
@@ -98,6 +98,8 @@ Use monotonic time for runtime deadline enforcement. Wall-clock timestamps are e
 - complete bounded cleanup.
 Hard process termination is last-resort isolation, not ordinary cancellation.
 
+Resource-accounting cancellation follows the same consistency rule: if cancellation or task destruction occurs while a durable usage write may have committed but before its in-memory lease charge is confirmed, the current governor fails closed and requires a fresh boot to reconcile from S08's ledger. A cancellation result alone does not claim that the durable record was rolled back.
+
 ## Shared work/coalescing
 Only operations whose contract permits semantic sharing can coalesce. Caller-specific permissions, secrets, side effects or result visibility can prohibit sharing even when payloads look identical.
 
@@ -161,3 +163,12 @@ Forbidden:
 
 ## Acceptance criteria
 S12 is accepted when Forge can deduplicate declared semantic intent, safely coalesce eligible in-flight work, propagate bounded cancellation/deadlines through owned task trees, detect zombie work and preserve ambiguous external outcomes for reconciliation without claiming impossible cross-system exactly-once semantics.
+
+## C03 command ownership and receipt recovery
+
+Command identity includes the principal, authorization scope, target resource and run as well as the
+contract/input/idempotency semantics, so a replay cannot cross those authority boundaries. S08
+stores an owner instance and bounded lease with an active intent. A second live store preserves
+that intent; reopening after a missing/stale owner or expired lease marks it `unknown_outcome`.
+Commit CAS, durable outbox events and the final receipt are one transaction. A failed transaction
+leaves the intent recoverable and never triggers an automatic repeat of an unknown external effect.

@@ -1,6 +1,6 @@
 # M00-S17 — Health, Readiness & Degradation Model
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S16
 
@@ -97,6 +97,8 @@ Dependencies are REQUIRED, OPTIONAL or CONDITIONAL for a given workload/capabili
 - REQUIRED unavailable -> workload NOT_READY unless valid fallback exists.
 - OPTIONAL unavailable -> affected enhancement DEGRADED/UNAVAILABLE, core path remains ready.
 - CONDITIONAL evaluated against requested capability/workload.
+
+The aggregate `ready` flag means all registered required probes are fresh and passing. Optional failures may set the aggregate state to `DEGRADED` while `ready` remains true for the core path; affected capabilities still report degradation.
 
 ## Sovereign standalone behavior
 HIVE, Core/Hades, IRIS, remote providers and Internet are optional for universal native Forge operation. Their loss cannot fail kernel liveness/readiness unless a requested workload explicitly requires that capability and no native fallback exists.

@@ -1,6 +1,6 @@
 # M00-S02 — Module Lifecycle
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01 Kernel Runtime primitives
 

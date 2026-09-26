@@ -1,0 +1,12 @@
+# Proposed checkpoint delta — FGE-004-M00
+
+Status: PROPOSED ONLY; DO NOT PROMOTE.
+
+Suggested next checkpoint text after independent audit and a separately governed merge:
+
+> FGE-004-M00 has a Rust workspace implementation candidate for S01-S22. Its exact-head hosted validation and outbound-network-blocked doctor checks passed for the implementation candidate; final product certification requires proof obligations, Evidence Bundle, CEC, security/performance evidence and independent audit bound to the merged commit. Product authorization remains bounded by the next admitted Work Order.
+
+This delta cannot be applied now. The C03 implementation candidate `fda8969097320cdad9b8f92dffb4fddd8fc2424e` (tree `f6c4c21a7f5e910c85c6bf5844ddb3b294679e13`) passed exact-head hosted CI in run `36270900434`, including the Ubuntu and Windows outbound-network-blocked doctor checks. Its 68-entry Git-blob source inventory verified with zero mismatches. The ten-pair performance comparison passed all 16 comparable workloads and three scaling limits; new/changed workloads remain proposed candidate budgets, not approved SLOs. Those results apply to that implementation candidate only; any later evidence-only commit needs its own exact-head check binding through PR #9 and does not inherit the candidate's CI. The pre-CD3 UADS digest is not evidence for CD3/CD4, and fresh digest-bound execution evidence is not established. The performance measurement gate passed, while independent security, performance, reliability and certification-systems reviews of one frozen package digest remain pending; checkpoint authority approval is absent. Other M00 certification gaps recorded in the CEC remain in force. Durable live token/cost attribution and its accounting atomicity correction are implemented and locally tested; provider billing integration remains unavailable and budgets stay zero until explicitly configured. `.engineering/CHECKPOINT.md` and `.engineering/CHECKPOINT.json` are intentionally not changed.
+
+
+C03 correction snapshot: candidate `fda8969097320cdad9b8f92dffb4fddd8fc2424e`, baseline `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`, performance report SHA-256 `3ca0a256e7c08318706cf5f190acfe31150290cf66676e9958494eaf47b3e217`. The first five-pair run is preserved as a variance record and is not omitted from the evidence. This proposal remains unapplied; the canonical checkpoint files stay unchanged until a separately authorized audit disposition, merge, and checkpoint promotion.
