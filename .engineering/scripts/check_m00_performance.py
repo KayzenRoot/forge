@@ -248,21 +248,26 @@ def main() -> int:
     target_dir = args.target_dir or candidate / "target" / "m00-performance-budget"
     target_dir = target_dir.resolve()
     target_dir.mkdir(parents=True, exist_ok=True)
-    environment = os.environ.copy()
-    environment["CARGO_TARGET_DIR"] = str(target_dir)
+    # Give each source tree its own Cargo artifacts. Sharing one target dir lets
+    # Cargo reuse a bench executable across the extracted baseline and candidate
+    # workspaces, which can silently turn a comparison into two runs of one tree.
+    baseline_environment = os.environ.copy()
+    baseline_environment["CARGO_TARGET_DIR"] = str(target_dir / "baseline")
+    candidate_environment = os.environ.copy()
+    candidate_environment["CARGO_TARGET_DIR"] = str(target_dir / "candidate")
 
-    toolchain = run(["rustc", "-Vv"], candidate, environment).strip()
-    cargo_version = run(["cargo", "-V"], candidate, environment).strip()
+    toolchain = run(["rustc", "-Vv"], candidate, candidate_environment).strip()
+    cargo_version = run(["cargo", "-V"], candidate, candidate_environment).strip()
     # Compile both workspaces before timing, then alternate runs to avoid giving
     # one revision every first-run or warm-cache advantage.
-    bench_workspace(baseline, environment, no_run=True)
-    bench_workspace(candidate, environment, no_run=True)
+    bench_workspace(baseline, baseline_environment, no_run=True)
+    bench_workspace(candidate, candidate_environment, no_run=True)
 
     baseline_runs: list[dict[str, object]] = []
     candidate_runs: list[dict[str, object]] = []
     for run_number in range(1, args.runs + 1):
-        baseline_output = bench_workspace(baseline, environment, no_run=False)
-        candidate_output = bench_workspace(candidate, environment, no_run=False)
+        baseline_output = bench_workspace(baseline, baseline_environment, no_run=False)
+        candidate_output = bench_workspace(candidate, candidate_environment, no_run=False)
         baseline_runs.append(parse_output(baseline_output))
         candidate_runs.append(parse_output(candidate_output))
         print(f"performance_pair={run_number}/{args.runs} PASS", flush=True)
