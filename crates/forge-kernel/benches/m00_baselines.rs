@@ -611,12 +611,10 @@ fn main() {
         report_samples("durable_event_outbox", 200, event_samples);
 
         // Earlier measurements can outlive the 60-second store owner lease.
-        // Reopen the same database before the command workload so its active
-        // owner and receipt measurements start from a current lease.
+        // Use a fresh owner for each timed command sample so one slow sample or
+        // unrelated host load cannot expire the benchmark store before later samples.
         drop(store);
-        let store = ForgeStateStore::open(root.path())
-            .await
-            .expect("command benchmark state store");
+        let command_store_root = root.path().to_path_buf();
 
         let auth_key = [0x5a; 32];
         let host_signer = HostDecisionSigner::new(auth_key);
@@ -651,7 +649,10 @@ fn main() {
         let fingerprint = |name: &str| blake3::hash(name.as_bytes()).to_hex().to_string();
         let mut command_samples = Vec::new();
         let mut command_sequence = 0_u64;
-        for _ in 0..5 {
+        for sample in 0..5 {
+            let store = ForgeStateStore::open(&command_store_root)
+                .await
+                .expect("command benchmark state store");
             let start = Instant::now();
             for _ in 0..200 {
                 let index = command_sequence;
@@ -707,14 +708,19 @@ fn main() {
                 );
             }
             command_samples.push(start.elapsed());
+            println!("benchmark_progress=command_dispatch completed_sample={sample}");
+            drop(store);
         }
         report_samples("command_dispatch_local_mutation", 200, command_samples);
 
+        let backup_store = ForgeStateStore::open(&command_store_root)
+            .await
+            .expect("backup benchmark state store");
         let backup_root = tempfile::tempdir().expect("backup root");
         let mut backup_samples = Vec::new();
         for sample in 0..5 {
             let start = Instant::now();
-            store
+            backup_store
                 .backup_to(backup_root.path().join(format!("snapshot-{sample}")))
                 .await
                 .expect("state backup");
