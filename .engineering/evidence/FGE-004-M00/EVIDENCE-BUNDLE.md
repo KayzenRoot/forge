@@ -26,6 +26,10 @@ Status: CANDIDATE EVIDENCE; NOT AN APPROVAL OR CHECKPOINT PROMOTION. This bundle
 
 Canonical source SHA-256 values are listed in [SOURCE-FINGERPRINTS.sha256](SOURCE-FINGERPRINTS.sha256). Toolchain: rustc 1.98.1 (`48a229ceaefd4985c50990b14116b6d856af0985`), target `x86_64-pc-windows-msvc`, LLVM 22.1.8. Hardware, five-sample benchmark results, cache counters and idle memory method are in [PERFORMANCE-M00-CANDIDATE.md](../../../docs/PERFORMANCE-M00-CANDIDATE.md).
 
+## IA1 source fingerprint integrity correction
+
+The 68-entry inventory is now bound to raw Git blob bytes and its path order is locked. The former 22 checkout-byte mismatches, complete old-to-corrected hash table, deterministic verifier, isolated fixture results and preserved `output/` metadata inventory are recorded in [IA1 source fingerprint verification](IA1-SOURCE-FINGERPRINT-VERIFICATION.md). PR #9 remains draft and unmerged; the exact correction head and its hosted Actions result are recorded in the PR after push. This evidence resolves the source-fingerprint integrity blocker only; independent assurance remains pending, and no M00 approval or checkpoint promotion is claimed.
+
 ## Executed local evidence
 
 | Command/check | Result |
