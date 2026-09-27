@@ -10,3 +10,17 @@ This delta cannot be applied now. The current implementation candidate is `0ce56
 
 
 C03 historical correction snapshot: candidate `fda8969097320cdad9b8f92dffb4fddd8fc2424e`, baseline `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`, performance report SHA-256 `3ca0a256e7c08318706cf5f190acfe31150290cf66676e9958494eaf47b3e217`. Its first five-pair run is preserved. The current `0ce565e` performance reports and their variance are recorded in the current implementation overlay above. This proposal remains unapplied; the canonical checkpoint files stay unchanged until a separately authorized audit disposition, merge, and checkpoint promotion.
+
+## C03 final correction evidence overlay — implementation head f03da4a (2026-09-26)
+
+The corrected implementation commit is `f03da4aa02e619b5affcff09baf6fd56337a286e`. Its local
+workspace suite passed (1 CLI, 6 contract, 85 kernel, 26 state, one compile-fail doctest); release
+doctor and six S21 local readiness cases pass at schema 7. Local egress blocking is not claimed.
+Performance passed 13/13 comparable workloads using the fixed 20% baseline allowance and all three
+scaling checks. These are candidate results only. The exact performance JSON is bound by SHA-256
+`4b068854c60575b0a975b8495c956005194070ea381a1be52a44070fbf523b7f`.
+
+This proposed text remains unapplied. The final documentation/evidence head requires its own raw
+source-fingerprint verification and exact-head hosted CI through PR #9, followed by four fresh,
+distinct reviews of one frozen package digest. This overlay does not promote or certify M00, merge the
+PR, change either canonical checkpoint file, or begin M01.

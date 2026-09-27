@@ -161,3 +161,13 @@ candidate; the final documentation head still needs its own exact-head verifier 
 
 No canonical checkpoint file is changed by this record. The result fixes source-inventory coverage;
 it is not independent assurance, M00 certification, or checkpoint-promotion evidence.
+
+## C03 final correction source verification overlay (2026-09-26)
+
+The final correction changes fingerprinted code and `docs/PERFORMANCE-M00-CANDIDATE.md`; therefore
+the earlier `0ce565e` verification above is historical only. The 72-path manifest is refreshed from
+the staged raw Git blobs after the final evidence documentation is staged. The final verifier output
+must bind the exact committed evidence head and is included in the external frozen package and lock.
+The expected path count/order remains fixed; evidence, work-order and manifest files remain excluded
+from the source set by the verifier's existing policy. This record does not claim verification until
+that exact-head output reports pass with zero errors and mismatches.

@@ -113,3 +113,31 @@ below cannot certify a later SHA.
 
 The package remains candidate evidence only. PR #9 stays open, draft, and unmerged; canonical checkpoint
 files remain unchanged; M00 is not promoted and M01 has not started.
+
+## C03 final executor correction overlay — implementation head f03da4a (2026-09-26)
+
+This section supersedes earlier C03 candidate evidence where it differs. It remains candidate
+evidence pending final evidence-head CI and the fresh four-review gate.
+
+- Implementation head `f03da4aa02e619b5affcff09baf6fd56337a286e`; final documentation/evidence head,
+  source-fingerprint result, CI run and PR snapshot are bound in the external context lock and frozen
+  package.
+- Code corrections include monotonic committed-effect finalization, exact host-signed local
+  transition revision, atomic state/outbox/receipt/final marker, per-producer outbox ordering,
+  per-consumer acknowledgements, three-attempt poison-event quarantine, independent backup digest
+  trust and CAS inventory validation, and secret-safe payload filtering. SQLite read/modify/write
+  paths reserve the writer before outbox sequencing and confirmed-effect staging.
+- Local checks passed: format, workspace check, clippy, complete test suite (1 CLI, 6 contracts,
+  85 kernel, 26 state, one compile-fail doctest), dependency policy/audit, release doctor and all six
+  S21 readiness groups. Local egress blocking was not asserted. Doctor: `native_ready`, schema 7,
+  SQLite integrity `ok`, offline ready, optional services unconfigured.
+- Performance on `f03da4a`: ten paired outer runs x five inner samples; fixed `baseline median + 20%`
+  acceptance; 13/13 comparable workloads and all three scaling checks passed. Two workloads are
+  `not_comparable`. Report SHA-256 `4b068854c60575b0a975b8495c956005194070ea381a1be52a44070fbf523b7f`;
+  the report and two exact harness snapshots are packaged.
+- `cargo deny check` passed with duplicate-version warnings for `cpufeatures`, `hashbrown`, and
+  `syn`; all policy categories passed. `cargo audit --deny warnings` passed.
+
+The final exact-head hosted CI and four independent reviewer verdicts are bound only after packaging.
+No PR merge, checkpoint edit/promotion, M00 certification or M01 admission is authorized by this
+evidence overlay.

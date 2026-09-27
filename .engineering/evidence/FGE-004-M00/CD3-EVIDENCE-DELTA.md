@@ -78,3 +78,36 @@ accounting facts remain historical evidence. It does not certify M00 or change c
 
 PR #9 remains open, draft, and unmerged. `.engineering/CHECKPOINT.md` and `.engineering/CHECKPOINT.json`
 remain unchanged; M00 is not promoted and M01 has not started.
+
+## C03 final correction executor overlay — implementation head f03da4a (2026-09-26)
+
+This overlay supersedes the earlier candidate and performance status. It records executor evidence,
+not final approval.
+
+- Corrected code commit: `f03da4aa02e619b5affcff09baf6fd56337a286e`; final evidence-head SHA/tree, raw
+  source verification and exact-hosted-CI run will be stated by the final external lock and PR #9
+  update after the evidence commit.
+- The finalization path is monotonic and recoverable for confirmed external effects. It never permits
+  rerunning the handler after confirmation. Exact signed local-transition revisions are append-only
+  and single-use; state/outbox/receipt/final marker are atomic. SQLite writer reservation now covers
+  staged finalization and durable outbox sequence allocation.
+- Outbox replay preserves producer order; acknowledgements and poison-event retry state are per
+  consumer. The quarantine threshold is three failed decodes. Backups include CAS inventory and
+  restore verifies content against an independently held expected fingerprint.
+- Secret canaries, concurrent outbox sequencing, crash-boundary tests, consumer replay and CAS
+  tampering regressions pass. Local test totals are 1 CLI, 6 contracts, 85 kernel, 26 state and one
+  compile-fail doctest. Release doctor and all six local S21 readiness IDs pass on schema 7; local
+  egress is not asserted.
+- Final-correction performance report on `f03da4a`: 10 paired outer runs, 5 inner samples, fixed
+  20% allowance, 13/13 comparable workloads and 3/3 scaling curves PASS. Two workloads are excluded
+  as `not_comparable`. Report SHA-256:
+  `4b068854c60575b0a975b8495c956005194070ea381a1be52a44070fbf523b7f`.
+- Dependency policy and audit passed. `cargo deny` reports duplicate `cpufeatures`, `hashbrown`, and
+  `syn` versions; no policy category failed.
+
+The historical `fda8969` performance threshold based on the observed maximum is superseded. Earlier
+interrupted benchmark attempts on the final correction path exposed and led to fixes for parser and
+SQLite write-contention problems; only the completed report above is counted. Four fresh native
+review sessions must inspect the identical final frozen package digest before any assurance verdict.
+The PR remains open, draft and unmerged; canonical checkpoint state is untouched; no M00 promotion or
+M01 start is claimed.

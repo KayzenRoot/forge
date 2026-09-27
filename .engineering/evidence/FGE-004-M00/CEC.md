@@ -129,3 +129,47 @@ Fresh, distinct security, performance, reliability, and certification-systems re
 to inspect one identical frozen package digest. Their actual identities and verdicts are recorded
 outside the package to avoid changing the digest recursively. The PR remains open and draft. The
 canonical checkpoint is unchanged, M00 is not promoted, and M01 has not started.
+
+## C03 final executor correction overlay — implementation head f03da4a (2026-09-26)
+
+This overlay supersedes the earlier implementation and performance status above. It records executor
+evidence only; it is not independent approval, M00 certification, merge authorization, or checkpoint
+promotion.
+
+- Corrected implementation commit: `f03da4aa02e619b5affcff09baf6fd56337a286e`, descended from the
+  previously admitted implementation `0ce565eb217ea3dd1d38e31bf16bdecf772c4175`. The evidence-only
+  commit, exact-head CI run, source verification and PR snapshot are bound by the final external
+  context lock and frozen package.
+- Confirmed external effects now remain in a terminal pending-finalization state after local CAS
+  conflicts. A host-signed, short-lived, exact-scope revision can change only the local transition;
+  staged result, CAS, durable outbox, receipt and final marker complete atomically. Process-crash
+  regressions cover each write boundary. Store schema is v7.
+- Durable outbox ordering is per producer and acknowledgements are per consumer. Poison events are
+  isolated and quarantined after three decode failures. SQLite event sequence allocation and staged
+  finalization reserve the writer before read/modify/write; 96 concurrent outbox inserts receive
+  unique per-producer sequences.
+- Backups cover CAS objects and the database. Restore verifies the database, manifest and CAS
+  contents against a separately supplied expected fingerprint; an adjacent unkeyed hash alone is
+  not described as authentication. Credential-shaped names/values are rejected at persistence
+  boundaries, with canary regression coverage.
+- Local verification on the corrected code: `cargo fmt --all -- --check`, workspace check, clippy,
+  full tests, `cargo deny check`, `cargo audit --deny warnings`, release build, release doctor and
+  six named S21 readiness scenarios passed. The Rust result was 1 CLI, 6 contract, 85 kernel, 26 state
+  and one compile-fail doctest. Doctor reported `native_ready`, schema 7, SQLite integrity `ok`, and
+  offline-ready. Local S21 did not assert blocked egress; only hosted Linux/Windows firewall checks
+  can prove that gate.
+- `cargo deny check` emitted duplicate-version warnings for `cpufeatures`, `hashbrown`, and `syn`;
+  advisories, bans, licenses and sources passed. `cargo audit --deny warnings` exited successfully.
+- Performance comparison on implementation head `f03da4a` passed 13/13 comparable workloads with
+  the predeclared fixed 20% allowance and 3/3 scaling checks. Two workload names were
+  `not_comparable`; the 17 changed/candidate-only workloads remain candidate baselines. The exact
+  report and benchmark-source snapshots are in the frozen evidence package; the historical
+  `fda8969` observed-maximum budget is superseded and is not counted under the current method.
+- Measurement attempts on intermediate commits exposed trailing-comma extraction and SQLite writer
+  contention; both were corrected before the complete `f03da4a` run. The interrupted attempts are
+  preserved as execution history, not counted as benchmark verdicts.
+
+The final evidence-head hosted CI result and fresh four-session review results must be read from the
+external frozen-package lock. Reviewers must all receive the same package SHA-256. Until their
+verdicts are bound, the result remains `CANDIDATE / NOT CERTIFIED`. PR #9 remains open and draft;
+canonical checkpoint files remain unchanged; M00 is not promoted and M01 has not started.

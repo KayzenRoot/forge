@@ -181,3 +181,66 @@ The reports are preserved in the external C03 correction evidence directory and 
 artifacts in the frozen package. The implementation-head hosted CI run and the eventual
 documentation-head CI run are different exact-state bindings. Neither performance report approves an
 external SLO or satisfies the independent performance-review verdict.
+
+## C03 final correction measurement — implementation head f03da4a (2026-09-26)
+
+This section supersedes earlier C03 performance acceptance statements. It is measured candidate
+evidence only and does not approve an external SLO or certify M00.
+
+- Candidate: `f03da4aa02e619b5affcff09baf6fd56337a286e`; baseline:
+  `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`. The candidate worktree was clean, and the extracted
+  baseline was byte-for-byte verified against `git archive` for the declared baseline commit.
+- Method: ten paired outer runs, five inner samples per workload, with baseline/candidate order
+  alternated per pair. Common comparable workloads pass only when the candidate's ten-run median is
+  no more than the paired baseline median plus a predeclared 20% allowance. Baseline outliers and
+  candidate MAD do not widen this acceptance limit. Workload source definitions, inner sample counts,
+  and operation counts are fingerprinted; changed workloads are excluded from common acceptance.
+- Result: **PASS — 13/13 comparable workloads and 3/3 scaling checks**. Two common-name workloads,
+  `change_cone_100_node_chain` and `resource_usage_durable`, are marked `not_comparable` because the
+  workload definition or iteration count differs. The candidate records 17 additional or changed
+  workloads as candidate baselines; these are not approved latency limits.
+- Scaling ratios: Change Cone per-node `2.245x` (limit `3x`); durable resource-usage writes across
+  ledger cardinalities `1.039x` (limit `2x`); scheduler owner rotation `2.275x` (limit `3x`).
+- Report: `performance-candidate-f03da4a-10runs.json`, SHA-256
+  `4b068854c60575b0a975b8495c956005194070ea381a1be52a44070fbf523b7f`. The frozen evidence package
+  includes the report and the exact baseline/candidate benchmark-harness snapshots. Their SHA-256
+  values are `0a0c3b53effb4cabbc00503cfd25b27e13c1adab380ba85c4245557265683` and
+  `0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7`, respectively.
+
+### Comparable workload measurements
+
+All latency values are nanoseconds per operation. A row passes when candidate median is less than or
+equal to the fixed baseline budget shown.
+
+| Workload | Baseline median | Fixed 20% budget | Candidate median | Result |
+|---|---:|---:|---:|---|
+| `blake3_1k` | 1,059 | 1,271 | 1,061 | PASS |
+| `cancellation_lineage_check` | 32 | 39 | 32 | PASS |
+| `cancellation_parent_to_child` | 801 | 962 | 792 | PASS |
+| `contract_compile` | 13,153 | 15,784 | 11,863 | PASS |
+| `contract_validate` | 122 | 147 | 113 | PASS |
+| `durable_event_outbox` | 4,035,283 | 4,842,340 | 4,428,994 | PASS |
+| `readiness_query_one_check` | 2,215 | 2,658 | 851 | PASS |
+| `runtime_start_and_shutdown` | 225,255 | 270,306 | 221,670 | PASS |
+| `semantic_cache_lookup` | 54,129 | 64,955 | 64,509 | PASS |
+| `state_read` | 45,441 | 54,530 | 47,768 | PASS |
+| `state_transaction_write` | 3,726,024 | 4,471,229 | 3,740,486 | PASS |
+| `telemetry_observation` | 78 | 94 | 75 | PASS |
+| `typed_content_fingerprint_1k` | 1,204 | 1,445 | 1,208 | PASS |
+
+### Measurement erratum and execution history
+
+The historical `fda8969` report used the then-current `max(observed baseline maximum, median + 3 x
+MAD)` rule. That rule is superseded for common-workload acceptance by the fixed 20% allowance above;
+the historical PASS is not a result under the current method. Its run comprised ten outer comparisons,
+each with five inner samples. Earlier prose that shortened this to “median of five” omitted the ten
+outer-run layer. Also, `resource_lease_and_delegation` only times lease creation/delegation; it does
+not wait for expiry or measure reclamation, so the final runner classifies it as a candidate-only
+baseline rather than evidence of an expiry-path regression or a comparable latency result.
+
+The first C03-final measurement attempts exposed runner and SQLite writer-contention defects. A
+trailing-comma parsing fix was committed at `f94522f`; paired runs then exposed read-snapshot upgrade
+contention in durable outbox and staged command-finalization writes. Those write paths now reserve the
+SQLite writer before read/modify/write, and a regression verifies 96 concurrent outbox inserts receive
+unique per-producer sequences. Only the completed `f03da4a` ten-pair report above is a performance
+verdict; the interrupted attempts are not counted as failed workload comparisons.

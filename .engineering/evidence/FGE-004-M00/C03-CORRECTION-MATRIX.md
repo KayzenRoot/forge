@@ -65,3 +65,30 @@ The fresh four-review gate remains pending: security, performance, reliability, 
 reviewers must inspect one frozen package digest. The package and reviewer results are not an approval
 of M00. PR #9 remains open and draft; the checkpoint files remain unchanged; M00 is not promoted and
 M01 has not started.
+
+## C03 final correction executor overlay — implementation head f03da4a (2026-09-26)
+
+This overlay supersedes the earlier implementation/performance state above. Earlier rows remain
+historical for their named commits. The current implementation commit is
+`f03da4aa02e619b5affcff09baf6fd56337a286e`; final evidence-head CI, source verification, package
+digest and fresh reviewer identities are bound externally after packaging.
+
+| Correction area | Final correction | Evidence on the corrected implementation | Boundary |
+|---|---|---|---|
+| Confirmed-effect recovery (H3/S08/S10/S12) | Handler-confirmed effects enter `effect_committed_pending_finalization`; an outcome-resolution claim cannot make them retryable. A narrowly scoped host-signed revision changes only the local transition under the exact staged fingerprint. Final state, outbox, receipt and marker commit atomically. | Schema-v7 migrations; signed-decision rejection/replay/expiry tests; crash termination at each finalization write boundary; full workspace suite. | Local process-kill tests do not prove power-loss or storage-device fsync behavior. |
+| Outbox consistency (S09/H3) | Per-producer sequence allocation reserves the SQLite writer before reading the next sequence. Delivery/acknowledgement is tracked per consumer, and malformed-event quarantine is bounded to three failures while other replay entries continue. | Regression with 96 concurrent producer writes proves contiguous unique sequence values; ordering, per-consumer acknowledgement and poison-event tests pass. The exact candidate benchmark also completes durable outbox and command dispatch. | Does not claim cross-region delivery semantics. |
+| Secret and backup integrity (ML1/S08) | Credential-shaped field/value filtering covers camelCase, separators, compound credential names and plural forms. Backup v2 includes CAS inventory; restore checks object content and an expected digest supplied through a separately trusted channel. | Credential canaries, CAS tamper/recalculated-adjacent-hash test, restore integrity tests and documented unkeyed-hash limit pass. | The expected fingerprint must remain protected outside the backup. |
+| Performance acceptance (ML6) | Common workloads use a predeclared fixed 20% allowance over the paired baseline median; the observed baseline maximum cannot widen it. Workload definitions, iteration counts and sample counts determine comparability. | On `f03da4a`: 10 paired outer runs x 5 inner samples; 13/13 comparable workloads and 3/3 scaling checks passed. `change_cone_100_node_chain` and `resource_usage_durable` are explicitly `not_comparable`. Full JSON report SHA-256 is `4b068854c60575b0a975b8495c956005194070ea381a1be52a44070fbf523b7f`. | Candidate-only/change-semantic baselines are not approved SLOs. The historical `fda8969` observed-maximum rule is superseded. |
+| Local native/S21 evidence (H5) | Release doctor and all six named S21 cases execute against schema 7. Local execution leaves egress blocking unasserted. | Doctor: `native_ready`, SQLite integrity `ok`, offline ready. Local six-case mapping passes. Logs are frozen externally. | Hosted Linux and Windows firewall jobs alone prove blocked egress and must pass on the final evidence head. |
+
+The final complete local suite passed: 1 CLI, 6 contract, 85 kernel, 26 state, and one compile-fail
+doctest. `cargo fmt`, workspace check, clippy, release build, `cargo deny check`, and
+`cargo audit --deny warnings` passed. `cargo deny` emitted duplicate-version warnings for
+`cpufeatures`, `hashbrown`, and `syn`; its advisories, bans, licenses and sources checks passed.
+
+Intermediate performance attempts first found a trailing-comma parser issue and then SQLite writer
+contention in outbox/finalization paths. Both corrections are included before the complete `f03da4a`
+measurement. Only that complete report is a benchmark verdict. Fresh security, performance,
+reliability and certification-systems review of one identical frozen package SHA remains mandatory.
+PR #9 remains open/draft/unmerged; checkpoint files are unchanged; M00 is not promoted and M01 has
+not started.
