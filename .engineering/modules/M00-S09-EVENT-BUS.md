@@ -181,3 +181,10 @@ outbox rows, and idempotency receipt together. In-process publication happens af
 commits. A crash before commit leaves none of those records; a crash after commit leaves durable
 pending outbox rows for idempotent redelivery. Conflicting event identity aborts the entire command
 transaction instead of leaving state or a receipt partially committed.
+
+The durable outbox assigns a per-producer sequence and replay follows that sequence rather than
+wall-clock timestamps or lexicographic event IDs. Delivery state is scoped to each consumer ID: one
+consumer acknowledgement cannot retire another consumer's event. Malformed or contract-invalid
+events increment a bounded per-consumer attempt record and are quarantined after three failures;
+valid events in the same replay batch continue. Regressions cover producer order, independent
+acknowledgements, and poison-event isolation.

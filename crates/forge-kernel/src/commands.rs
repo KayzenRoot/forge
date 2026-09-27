@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use forge_contracts::{ContractId, ContractVersion, ValidatedContract};
 use forge_state::{
     CanonicalStateTransition, CommandOutcomeResolutionKind, ForgeStateStore, IdempotencyState,
-    StateError, StoredEvent,
+    StateError, StoredEvent, validate_payload_for_persistence,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -126,6 +126,30 @@ pub struct HostOutcomeResolutionDecision {
     pub mac: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostFinalizationRevisionClaims {
+    pub decision_id: String,
+    pub subject: String,
+    pub action: String,
+    pub scope: String,
+    pub resource_id: String,
+    pub run_id: String,
+    pub command_identity: String,
+    pub expected_finalization_fingerprint: String,
+    pub state_transition: Option<CanonicalStateTransition>,
+    pub valid_from_ms: u64,
+    pub expires_at_ms: u64,
+    pub permissions: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostFinalizationRevisionDecision {
+    pub claims: HostFinalizationRevisionClaims,
+    pub mac: String,
+}
+
 #[derive(Clone)]
 pub struct HostDecisionSigner {
     key: [u8; 32],
@@ -166,6 +190,19 @@ impl HostDecisionSigner {
             mac: blake3::keyed_hash(&self.key, &bytes).to_hex().to_string(),
         })
     }
+
+    /// Signs a host-authorized local CAS revision for one already-confirmed effect.
+    pub fn sign_finalization_revision(
+        &self,
+        claims: HostFinalizationRevisionClaims,
+    ) -> Result<HostFinalizationRevisionDecision, CommandError> {
+        validate_finalization_revision_claims(&claims)?;
+        let bytes = serde_json::to_vec(&claims).map_err(|_| CommandError::InvalidRequest)?;
+        Ok(HostFinalizationRevisionDecision {
+            claims,
+            mac: blake3::keyed_hash(&self.key, &bytes).to_hex().to_string(),
+        })
+    }
 }
 
 impl HostDecisionVerifier {
@@ -181,7 +218,7 @@ impl HostDecisionVerifier {
     ) -> Result<String, CommandError> {
         validate_host_claims(&decision.claims)?;
         if decision.claims.valid_from_ms > now_ms
-            || decision.claims.expires_at_ms < now_ms
+            || decision.claims.expires_at_ms <= now_ms
             || decision
                 .claims
                 .expires_at_ms
@@ -206,7 +243,32 @@ impl HostDecisionVerifier {
     ) -> Result<String, CommandError> {
         validate_outcome_resolution_claims(&decision.claims)?;
         if decision.claims.valid_from_ms > now_ms
-            || decision.claims.expires_at_ms < now_ms
+            || decision.claims.expires_at_ms <= now_ms
+            || decision
+                .claims
+                .expires_at_ms
+                .saturating_sub(decision.claims.valid_from_ms)
+                > HOST_DECISION_MAX_TTL_MS
+        {
+            return Err(CommandError::PermissionDenied);
+        }
+        let bytes =
+            serde_json::to_vec(&decision.claims).map_err(|_| CommandError::InvalidRequest)?;
+        let expected = blake3::keyed_hash(&self.key, &bytes).to_hex().to_string();
+        if !constant_time_hex_eq(&decision.mac, &expected) {
+            return Err(CommandError::PermissionDenied);
+        }
+        Ok(blake3::hash(&bytes).to_hex().to_string())
+    }
+
+    fn verify_finalization_revision(
+        &self,
+        decision: &HostFinalizationRevisionDecision,
+        now_ms: u64,
+    ) -> Result<String, CommandError> {
+        validate_finalization_revision_claims(&decision.claims)?;
+        if decision.claims.valid_from_ms > now_ms
+            || decision.claims.expires_at_ms <= now_ms
             || decision
                 .claims
                 .expires_at_ms
@@ -228,6 +290,8 @@ impl HostDecisionVerifier {
 const HOST_DECISION_MAX_TTL_MS: u64 = 300_000;
 const OUTCOME_RESOLUTION_ACTION: &str = "forge.command.resolve_unknown_outcome";
 const OUTCOME_RESOLUTION_PERMISSION: &str = "command.outcome.resolve";
+const FINALIZATION_REVISION_ACTION: &str = "forge.command.revise_effect_finalization";
+const FINALIZATION_REVISION_PERMISSION: &str = "command.finalization.revise";
 
 #[derive(Clone)]
 pub struct CommandContext {
@@ -279,6 +343,8 @@ pub enum CommandError {
     Duplicate,
     #[error("command has an unresolved external or local outcome")]
     UnknownOutcome,
+    #[error("confirmed external effect is waiting for atomic local finalization")]
+    FinalizationPending,
     #[error("command deadline expired before admission")]
     Deadline,
     #[error("command was cancelled before admission")]
@@ -534,6 +600,9 @@ impl CommandBus {
         {
             if prior.state == IdempotencyState::UnknownOutcome {
                 return Err(CommandError::UnknownOutcome);
+            }
+            if prior.state == IdempotencyState::EffectCommittedPendingFinalization {
+                return Err(CommandError::FinalizationPending);
             }
             if prior.state == IdempotencyState::Committed {
                 if let Some(value) = prior.result {
@@ -804,19 +873,37 @@ impl CommandBus {
                     "eventIds": durable_event_ids.clone(),
                     "sensitive": sensitive,
                     "executionFingerprint": execution_fingerprint,
-                    "authorizationDecisionFingerprint": authorization_fingerprint.clone(),
+                    "hostDecisionFingerprint": authorization_fingerprint.clone(),
                 },
                 "value": if sensitive { Value::Null } else { output.value.clone() },
             });
-            if let Err(error) = store
-                .commit_command(
-                    identity,
-                    &persisted,
-                    state_transition.as_ref(),
-                    &durable_events,
-                )
-                .await
-            {
+            let commit_result = if registration.side_effect != SideEffectClass::Pure {
+                store
+                    .stage_effect_finalization(
+                        identity,
+                        &persisted,
+                        state_transition.as_ref(),
+                        &durable_events,
+                    )
+                    .await?;
+                store.finalize_effect_committed(identity).await.map(|_| ())
+            } else {
+                store
+                    .commit_command(
+                        identity,
+                        &persisted,
+                        state_transition.as_ref(),
+                        &durable_events,
+                    )
+                    .await
+            };
+            if let Err(error) = commit_result {
+                if registration.side_effect != SideEffectClass::Pure {
+                    if matches!(error, StateError::StateConflict) {
+                        return Err(CommandError::FinalizationPending);
+                    }
+                    return Err(CommandError::State(error));
+                }
                 if matches!(error, StateError::StateConflict) {
                     let _ = record_failure(
                         store,
@@ -920,6 +1007,91 @@ impl CommandBus {
                 &identity,
                 claims.outcome,
                 &claims.evidence_fingerprint,
+                &claims.decision_id,
+                &decision_fingerprint,
+                now_ms,
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Applies a host-signed correction to the local CAS portion of a confirmed effect.
+    /// This never reruns the handler or repeats the external effect.
+    pub async fn revise_pending_finalization(
+        &self,
+        store: &ForgeStateStore,
+        request: &CommandRequest,
+        decision: &HostFinalizationRevisionDecision,
+    ) -> Result<(), CommandError> {
+        let verifier = self
+            .host_decision_verifier
+            .as_ref()
+            .ok_or(CommandError::PermissionDenied)?;
+        let now_ms = host_time_ms()?;
+        let decision_fingerprint = verifier.verify_finalization_revision(decision, now_ms)?;
+        let (registration, _) = {
+            let registry = self
+                .registry
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !registry.sealed {
+                return Err(CommandError::NotSealed);
+            }
+            registry
+                .handlers
+                .get(request.contract_id.as_str())
+                .cloned()
+                .ok_or(CommandError::NoHandler)?
+        };
+        if registration.side_effect == SideEffectClass::Pure
+            || registration.idempotency == IdempotencyMode::None
+            || request.sensitivity == SensitivityClass::Secret
+            || request.contract_id != registration.contract.definition().id
+            || request.contract_version != registration.contract.definition().version
+            || registration.contract.validate(&request.payload).is_err()
+        {
+            return Err(CommandError::InvalidRequest);
+        }
+        let input_fingerprint = blake3::hash(
+            &serde_json::to_vec(&request.payload).map_err(|_| CommandError::InvalidRequest)?,
+        )
+        .to_hex()
+        .to_string();
+        let identity = idempotency_identity(request, &registration, &input_fingerprint)?
+            .ok_or(CommandError::IdempotencyRequired)?;
+        let claims = &decision.claims;
+        if claims.action != FINALIZATION_REVISION_ACTION
+            || claims.command_identity != identity
+            || claims.subject != request.principal_id
+            || claims.scope != request.authorization_scope
+            || claims.resource_id != request.resource_id
+            || claims.run_id != request.run_id
+            || claims.permissions.len() != 1
+            || !claims
+                .permissions
+                .contains(FINALIZATION_REVISION_PERMISSION)
+            || claims.state_transition.as_ref().is_some_and(|transition| {
+                request.state_guard.as_ref().is_none_or(|guard| {
+                    transition.owner != guard.owner || transition.key != guard.key
+                })
+            })
+        {
+            return Err(CommandError::PermissionDenied);
+        }
+        let current = store
+            .effect_finalization(&identity)
+            .await?
+            .ok_or(CommandError::FinalizationPending)?;
+        if current.finalized_at_ms.is_some()
+            || current.fingerprint != claims.expected_finalization_fingerprint
+        {
+            return Err(CommandError::PermissionDenied);
+        }
+        store
+            .revise_effect_finalization(
+                &identity,
+                &claims.expected_finalization_fingerprint,
+                claims.state_transition.as_ref(),
                 &claims.decision_id,
                 &decision_fingerprint,
                 now_ms,
@@ -1097,6 +1269,38 @@ fn validate_outcome_resolution_claims(
     Ok(())
 }
 
+fn validate_finalization_revision_claims(
+    claims: &HostFinalizationRevisionClaims,
+) -> Result<(), CommandError> {
+    let transition_is_valid = claims.state_transition.as_ref().is_none_or(|transition| {
+        valid_token(&transition.owner)
+            && valid_token(&transition.key)
+            && transition
+                .expected_version
+                .is_none_or(|version| version > 0 && version <= i64::MAX as u64)
+            && validate_payload_for_persistence(&transition.value).is_ok()
+    });
+    if !valid_token(&claims.decision_id)
+        || !valid_token(&claims.subject)
+        || claims.action != FINALIZATION_REVISION_ACTION
+        || !valid_token(&claims.scope)
+        || !valid_token(&claims.resource_id)
+        || !valid_token(&claims.run_id)
+        || !valid_digest(&claims.command_identity)
+        || !valid_digest(&claims.expected_finalization_fingerprint)
+        || !transition_is_valid
+        || claims.expires_at_ms <= claims.valid_from_ms
+        || claims.expires_at_ms.saturating_sub(claims.valid_from_ms) > HOST_DECISION_MAX_TTL_MS
+        || claims.permissions.len() != 1
+        || !claims
+            .permissions
+            .contains(FINALIZATION_REVISION_PERMISSION)
+    {
+        return Err(CommandError::InvalidRequest);
+    }
+    Ok(())
+}
+
 fn host_time_ms() -> Result<u64, CommandError> {
     let value = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1218,6 +1422,35 @@ mod tests {
                     .collect(),
             })
             .expect("signed outcome resolution")
+    }
+
+    fn finalization_revision_decision(
+        signer: &HostDecisionSigner,
+        request: &CommandRequest,
+        identity: &str,
+        expected_finalization_fingerprint: &str,
+        decision_id: &str,
+        state_transition: Option<CanonicalStateTransition>,
+    ) -> HostFinalizationRevisionDecision {
+        let now = host_time_ms().expect("clock");
+        signer
+            .sign_finalization_revision(HostFinalizationRevisionClaims {
+                decision_id: decision_id.into(),
+                subject: request.principal_id.clone(),
+                action: FINALIZATION_REVISION_ACTION.into(),
+                scope: request.authorization_scope.clone(),
+                resource_id: request.resource_id.clone(),
+                run_id: request.run_id.clone(),
+                command_identity: identity.into(),
+                expected_finalization_fingerprint: expected_finalization_fingerprint.into(),
+                state_transition,
+                valid_from_ms: now.saturating_sub(1_000),
+                expires_at_ms: now.saturating_add(60_000),
+                permissions: [FINALIZATION_REVISION_PERMISSION.to_owned()]
+                    .into_iter()
+                    .collect(),
+            })
+            .expect("signed finalization revision")
     }
 
     fn registration(mode: IdempotencyMode, side_effect: SideEffectClass) -> CommandRegistration {
@@ -1776,7 +2009,14 @@ mod tests {
                 .await
                 .expect("read resolved status")
                 .expect("intent");
-            assert_eq!(prior.state, IdempotencyState::UnknownOutcome);
+            assert_eq!(
+                prior.state,
+                if kind == CommandOutcomeResolutionKind::EffectCommitted {
+                    IdempotencyState::EffectCommittedPendingFinalization
+                } else {
+                    IdempotencyState::UnknownOutcome
+                }
+            );
             assert_eq!(prior.error_code.as_deref(), Some(expected_code));
             assert_eq!(prior.latest_resolution.expect("audit record").kind, kind);
             let authorization = decision(
@@ -1785,8 +2025,8 @@ mod tests {
                 &format!("decision.blocked.{}", key.replace('-', ".")),
                 ["state.write".to_owned()].into_iter().collect(),
             );
-            assert!(matches!(
-                bus.execute(
+            let execution = bus
+                .execute(
                     &store,
                     request.clone(),
                     &authorization,
@@ -1794,9 +2034,18 @@ mod tests {
                     Deadline::after(std::time::Duration::from_secs(1)),
                     None,
                 )
-                .await,
-                Err(CommandError::UnknownOutcome)
-            ));
+                .await;
+            match kind {
+                CommandOutcomeResolutionKind::EffectCommitted => {
+                    assert!(matches!(execution, Err(CommandError::FinalizationPending)))
+                }
+                CommandOutcomeResolutionKind::Inconclusive => {
+                    assert!(matches!(execution, Err(CommandError::UnknownOutcome)))
+                }
+                CommandOutcomeResolutionKind::EffectNotCommitted => {
+                    unreachable!("this test only covers committed or inconclusive outcomes")
+                }
+            }
         }
         assert_eq!(attempts.load(std::sync::atomic::Ordering::Relaxed), 0);
     }
@@ -1875,7 +2124,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn state_transition_guard_commits_once_and_rejects_a_stale_absent_version() {
+    async fn state_transition_guard_commits_once_and_recovers_confirmed_effect_after_cas_conflict()
+    {
         let root = tempfile::tempdir().expect("temp dir");
         let store = ForgeStateStore::open(root.path()).await.expect("store");
         let (bus, signer) = trusted_bus(4);
@@ -1950,14 +2200,14 @@ mod tests {
         assert!(matches!(
             bus.execute(
                 &store,
-                request,
+                request.clone(),
                 &conflict_authorization,
                 CancellationToken::new(),
                 Deadline::after(std::time::Duration::from_secs(1)),
                 None,
             )
             .await,
-            Err(CommandError::StateConflict)
+            Err(CommandError::FinalizationPending)
         ));
         assert_eq!(
             store
@@ -1965,6 +2215,160 @@ mod tests {
                 .await
                 .expect("state remains unchanged"),
             Some(json!({"value": 2}))
+        );
+        let input_fingerprint =
+            blake3::hash(&serde_json::to_vec(&request.payload).expect("payload bytes"))
+                .to_hex()
+                .to_string();
+        let identity = idempotency_identity(
+            &request,
+            &registration(
+                IdempotencyMode::StateTransitionGuarded,
+                SideEffectClass::LocalMutation,
+            ),
+            &input_fingerprint,
+        )
+        .expect("identity")
+        .expect("state transition identity");
+        let staged = store
+            .effect_finalization(&identity)
+            .await
+            .expect("read staged finalization")
+            .expect("pending finalization");
+        assert_eq!(staged.finalized_at_ms, None);
+        assert_eq!(
+            store
+                .begin_idempotent(&identity)
+                .await
+                .expect("read pending intent")
+                .expect("intent")
+                .state,
+            IdempotencyState::EffectCommittedPendingFinalization
+        );
+
+        let revised_transition = CanonicalStateTransition {
+            owner: "project-a".into(),
+            key: "settings".into(),
+            expected_version: Some(1),
+            value: json!({"value":3}),
+        };
+        let mut mismatched_claims = finalization_revision_decision(
+            &signer,
+            &request,
+            &identity,
+            &staged.fingerprint,
+            "decision.finalization.cross-run",
+            Some(revised_transition.clone()),
+        )
+        .claims;
+        mismatched_claims.run_id = "run.another".into();
+        let mismatched = signer
+            .sign_finalization_revision(mismatched_claims)
+            .expect("validly signed cross-run claim");
+        assert!(matches!(
+            bus.revise_pending_finalization(&store, &request, &mismatched)
+                .await,
+            Err(CommandError::PermissionDenied)
+        ));
+
+        let stale = finalization_revision_decision(
+            &signer,
+            &request,
+            &identity,
+            &digest("stale-finalization"),
+            "decision.finalization.stale",
+            Some(revised_transition.clone()),
+        );
+        assert!(matches!(
+            bus.revise_pending_finalization(&store, &request, &stale)
+                .await,
+            Err(CommandError::PermissionDenied)
+        ));
+
+        let mut expired_claims = finalization_revision_decision(
+            &signer,
+            &request,
+            &identity,
+            &staged.fingerprint,
+            "decision.finalization.expired",
+            Some(revised_transition.clone()),
+        )
+        .claims;
+        let now = host_time_ms().expect("clock");
+        expired_claims.valid_from_ms = now.saturating_sub(120_000);
+        expired_claims.expires_at_ms = now;
+        let at_expiration = signer
+            .sign_finalization_revision(expired_claims)
+            .expect("well-formed host decision at its expiration boundary");
+        assert!(matches!(
+            bus.revise_pending_finalization(&store, &request, &at_expiration)
+                .await,
+            Err(CommandError::PermissionDenied)
+        ));
+
+        let mut tampered = finalization_revision_decision(
+            &signer,
+            &request,
+            &identity,
+            &staged.fingerprint,
+            "decision.finalization.tampered",
+            Some(revised_transition.clone()),
+        );
+        tampered.mac = digest("forged-finalization-signature");
+        assert!(matches!(
+            bus.revise_pending_finalization(&store, &request, &tampered)
+                .await,
+            Err(CommandError::PermissionDenied)
+        ));
+
+        let revision = finalization_revision_decision(
+            &signer,
+            &request,
+            &identity,
+            &staged.fingerprint,
+            "decision.finalization.valid",
+            Some(revised_transition),
+        );
+        bus.revise_pending_finalization(&store, &request, &revision)
+            .await
+            .expect("host-authorized state revision");
+        assert!(matches!(
+            bus.revise_pending_finalization(&store, &request, &revision)
+                .await,
+            Err(CommandError::PermissionDenied)
+        ));
+        assert!(
+            store
+                .finalize_effect_committed(&identity)
+                .await
+                .expect("finalize confirmed effect")
+        );
+        assert_eq!(
+            store
+                .get_canonical("project-a", "settings")
+                .await
+                .expect("read revised state"),
+            Some(json!({"value":3}))
+        );
+        let committed = store
+            .begin_idempotent(&identity)
+            .await
+            .expect("read committed receipt")
+            .expect("committed intent");
+        assert_eq!(committed.state, IdempotencyState::Committed);
+        assert!(
+            committed
+                .result
+                .as_ref()
+                .and_then(|value| value.pointer("/_forgeCommandReceipt/hostDecisionFingerprint"))
+                .and_then(Value::as_str)
+                .is_some_and(valid_digest)
+        );
+        assert!(
+            !store
+                .finalize_effect_committed(&identity)
+                .await
+                .expect("idempotent finalization")
         );
     }
 
@@ -2051,7 +2455,10 @@ mod tests {
             .expect("replay");
         assert_eq!(first.event_ids.len(), 1);
         assert_eq!(replay.event_ids, first.event_ids);
-        let pending = store.pending_events(10).await.expect("outbox");
+        let pending = store
+            .pending_events_for_consumer("command-test-consumer", 10)
+            .await
+            .expect("outbox");
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].event_id, first.event_ids[0]);
         assert_eq!(
@@ -2060,13 +2467,13 @@ mod tests {
         );
         assert!(
             event_bus
-                .acknowledge(&store, &first.event_ids[0])
+                .acknowledge(&store, "command-test-consumer", &first.event_ids[0])
                 .await
                 .expect("acknowledge committed command event")
         );
         assert!(
             store
-                .pending_events(10)
+                .pending_events_for_consumer("command-test-consumer", 10)
                 .await
                 .expect("acknowledged outbox")
                 .is_empty()

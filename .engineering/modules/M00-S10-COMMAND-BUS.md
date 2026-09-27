@@ -60,6 +60,14 @@ Handles the dangerous case where Forge loses contact after sending a nontrivial 
 
 M00 records a reconciliation only when the trusted host signs a short-lived decision bound to the exact command identity, subject, action, scope, resource and run, plus an evidence fingerprint. `effect_not_committed` can make the intent retryable, but a later attempt still needs a fresh command authorization. `effect_committed` is recorded as externally resolved while the command remains blocked until local state/outbox finalization is proven. `inconclusive` preserves the unknown outcome. A payload claim or unsigned provider response cannot change these states.
 
+If confirmed work encounters a local CAS conflict, the bus leaves it in
+`effect_committed_pending_finalization` and never dispatches the handler again. A separate trusted
+host decision can revise only the staged local transition. Its signature binds the prior staged
+fingerprint, exact command identity and authority tuple, replacement transition, five-minute maximum
+validity and one-use decision ID. Replay, expiry, signature tampering, stale fingerprint, or a
+subject/scope/resource/run mismatch fails closed. The bus then resumes the existing staged result;
+it does not repeat the external operation.
+
 ### Command Result Proof (CRP)
 Evidence record binding command/input fingerprints, provider, snapshots, attempts, timing, result/error, state/effect commit references and emitted event IDs.
 

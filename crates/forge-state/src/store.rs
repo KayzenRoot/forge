@@ -9,11 +9,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use thiserror::Error;
 use tokio::sync::watch;
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 7;
 const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS forge_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS canonical_state (owner TEXT NOT NULL, key TEXT NOT NULL, value BLOB NOT NULL, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (owner, key))",
@@ -41,6 +41,23 @@ const OUTCOME_RESOLUTION_MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS command_outcome_resolutions (resolution_id INTEGER PRIMARY KEY AUTOINCREMENT, identity TEXT NOT NULL REFERENCES command_intents(identity), decision_id TEXT NOT NULL UNIQUE, outcome TEXT NOT NULL CHECK(outcome IN ('effect_committed', 'effect_not_committed', 'inconclusive')), evidence_fingerprint TEXT NOT NULL, decision_fingerprint TEXT NOT NULL, resolved_at_ms INTEGER NOT NULL CHECK(resolved_at_ms >= 0))",
     "CREATE INDEX IF NOT EXISTS command_outcome_resolutions_identity ON command_outcome_resolutions(identity, resolution_id DESC)",
 ];
+const EVENT_DELIVERY_MIGRATIONS: &[&str] = &[
+    "ALTER TABLE event_outbox ADD COLUMN producer_id TEXT NOT NULL DEFAULT 'legacy'",
+    "ALTER TABLE event_outbox ADD COLUMN producer_sequence INTEGER NOT NULL DEFAULT 0",
+    "UPDATE event_outbox SET producer_sequence=rowid WHERE producer_sequence=0",
+    "CREATE UNIQUE INDEX IF NOT EXISTS event_outbox_producer_order ON event_outbox(producer_id, producer_sequence)",
+    "CREATE TABLE IF NOT EXISTS event_consumer_state (event_id TEXT NOT NULL REFERENCES event_outbox(event_id), consumer_id TEXT NOT NULL, delivery_attempts INTEGER NOT NULL DEFAULT 0 CHECK(delivery_attempts >= 0), acknowledged INTEGER NOT NULL DEFAULT 0 CHECK(acknowledged IN (0, 1)), quarantined INTEGER NOT NULL DEFAULT 0 CHECK(quarantined IN (0, 1)), last_error_code TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(event_id, consumer_id))",
+    "CREATE INDEX IF NOT EXISTS event_consumer_pending ON event_consumer_state(consumer_id, acknowledged, quarantined, event_id)",
+];
+const EVENT_POISON_QUARANTINE_THRESHOLD: i64 = 3;
+const EFFECT_FINALIZATION_MIGRATIONS: &[&str] = &[
+    "CREATE TABLE IF NOT EXISTS command_finalizations (identity TEXT PRIMARY KEY REFERENCES command_intents(identity), payload BLOB NOT NULL, fingerprint TEXT NOT NULL, staged_at_ms INTEGER NOT NULL CHECK(staged_at_ms >= 0), finalized_at_ms INTEGER)",
+    "UPDATE command_intents SET state='effect_committed_pending_finalization', result=NULL, error_code='FORGE.COMMAND.EFFECT_COMMITTED_REQUIRES_FINALIZATION', owner_instance_id=NULL, lease_expires_at_ms=NULL WHERE state<>'committed' AND EXISTS(SELECT 1 FROM command_outcome_resolutions WHERE command_outcome_resolutions.identity=command_intents.identity AND outcome='effect_committed')",
+];
+const EFFECT_FINALIZATION_REVISION_MIGRATIONS: &[&str] = &[
+    "CREATE TABLE IF NOT EXISTS command_finalization_revisions (revision_id INTEGER PRIMARY KEY AUTOINCREMENT, identity TEXT NOT NULL REFERENCES command_finalizations(identity), prior_fingerprint TEXT NOT NULL, revised_fingerprint TEXT NOT NULL, state_transition BLOB NOT NULL, decision_id TEXT NOT NULL UNIQUE REFERENCES authorization_decisions(decision_id), decision_fingerprint TEXT NOT NULL, revised_at_ms INTEGER NOT NULL CHECK(revised_at_ms >= 0))",
+    "CREATE INDEX IF NOT EXISTS command_finalization_revisions_identity ON command_finalization_revisions(identity, revision_id)",
+];
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static STORE_INSTANCE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -65,6 +82,7 @@ pub enum IdempotencyState {
     FailedRetryable,
     FailedFinal,
     UnknownOutcome,
+    EffectCommittedPendingFinalization,
 }
 
 impl IdempotencyState {
@@ -75,6 +93,7 @@ impl IdempotencyState {
             Self::FailedRetryable => "failed_retryable",
             Self::FailedFinal => "failed_final",
             Self::UnknownOutcome => "unknown_outcome",
+            Self::EffectCommittedPendingFinalization => "effect_committed_pending_finalization",
         }
     }
 
@@ -85,6 +104,7 @@ impl IdempotencyState {
             "failed_retryable" => Ok(Self::FailedRetryable),
             "failed_final" => Ok(Self::FailedFinal),
             "unknown_outcome" => Ok(Self::UnknownOutcome),
+            "effect_committed_pending_finalization" => Ok(Self::EffectCommittedPendingFinalization),
             _ => Err(StateError::Integrity),
         }
     }
@@ -150,6 +170,13 @@ pub struct StoredEvent {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingEventRecord {
+    pub event_id: String,
+    pub contract_id: String,
+    pub payload_bytes: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CanonicalStateTransition {
     pub owner: String,
     pub key: String,
@@ -197,13 +224,48 @@ pub struct PersistedResourceUsageRecord {
     pub attribution: ResourceUsageAttribution,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BackupCasObject {
+    digest: String,
+    size: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BackupManifestUnsigned {
+    schema_version: u16,
+    database_schema_version: i64,
+    database_fingerprint: String,
+    database_hash_algorithm: String,
+    cas_objects: Vec<BackupCasObject>,
+}
+
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct BackupManifest {
     schema_version: u16,
     database_schema_version: i64,
     database_fingerprint: String,
     database_hash_algorithm: String,
+    cas_objects: Vec<BackupCasObject>,
+    backup_fingerprint: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct PendingEffectFinalization {
+    result: Value,
+    state_transition: Option<CanonicalStateTransition>,
+    events: Vec<StoredEvent>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct EffectFinalizationRecord {
+    pub fingerprint: String,
+    pub result: Value,
+    pub state_transition: Option<CanonicalStateTransition>,
+    pub events: Vec<StoredEvent>,
+    pub finalized_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Error)]
@@ -601,6 +663,69 @@ impl ForgeStateStore {
         Ok(result.rows_affected() == 1)
     }
 
+    async fn insert_outbox_event(
+        transaction: &mut Transaction<'_, Sqlite>,
+        event: &StoredEvent,
+    ) -> Result<(), StateError> {
+        validate_key(&event.event_id)?;
+        validate_key(&event.contract_id)?;
+        ensure_safe_payload(&event.payload)?;
+        let producer_id = event
+            .payload
+            .get("producer")
+            .and_then(Value::as_str)
+            .unwrap_or("legacy");
+        validate_key(producer_id)?;
+        let payload = serde_json::to_vec(&event.payload).map_err(StateError::Serialization)?;
+
+        if let Some(row) = sqlx::query(
+            "SELECT contract_id, producer_id, payload FROM event_outbox WHERE event_id=?1",
+        )
+        .bind(&event.event_id)
+        .fetch_optional(&mut **transaction)
+        .await
+        .map_err(StateError::Storage)?
+        {
+            let contract_id: String = row.try_get("contract_id").map_err(StateError::Storage)?;
+            let existing_producer: String =
+                row.try_get("producer_id").map_err(StateError::Storage)?;
+            let prior_payload: Vec<u8> = row.try_get("payload").map_err(StateError::Storage)?;
+            if contract_id == event.contract_id
+                && existing_producer == producer_id
+                && prior_payload == payload
+            {
+                return Ok(());
+            }
+            return Err(StateError::StateConflict);
+        }
+
+        let sequence_row = sqlx::query(
+            "SELECT COALESCE(MAX(producer_sequence), 0) + 1 AS next_sequence FROM event_outbox WHERE producer_id=?1",
+        )
+        .bind(producer_id)
+        .fetch_one(&mut **transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        let producer_sequence: i64 = sequence_row
+            .try_get("next_sequence")
+            .map_err(StateError::Storage)?;
+        if producer_sequence <= 0 {
+            return Err(StateError::Integrity);
+        }
+        sqlx::query(
+            "INSERT INTO event_outbox(event_id, contract_id, payload, delivery_state, producer_id, producer_sequence) VALUES(?1, ?2, ?3, 'pending', ?4, ?5)",
+        )
+        .bind(&event.event_id)
+        .bind(&event.contract_id)
+        .bind(payload)
+        .bind(producer_id)
+        .bind(producer_sequence)
+        .execute(&mut **transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        Ok(())
+    }
+
     /// Atomically commits a command receipt with its optional canonical state transition and
     /// durable events. A crash can therefore leave either the complete commit or none of it.
     pub async fn commit_command(
@@ -655,33 +780,7 @@ impl ForgeStateStore {
         #[cfg(test)]
         let mut event_index = 0usize;
         for event in events {
-            validate_key(&event.event_id)?;
-            validate_key(&event.contract_id)?;
-            ensure_safe_payload(&event.payload)?;
-            let payload = serde_json::to_vec(&event.payload).map_err(StateError::Serialization)?;
-            let inserted = sqlx::query("INSERT INTO event_outbox(event_id, contract_id, payload, delivery_state) VALUES(?1, ?2, ?3, 'pending') ON CONFLICT(event_id) DO NOTHING")
-                .bind(&event.event_id)
-                .bind(&event.contract_id)
-                .bind(&payload)
-                .execute(&mut *transaction)
-                .await
-                .map_err(StateError::Storage)?
-                .rows_affected();
-            if inserted == 0 {
-                let row =
-                    sqlx::query("SELECT contract_id, payload FROM event_outbox WHERE event_id=?1")
-                        .bind(&event.event_id)
-                        .fetch_optional(&mut *transaction)
-                        .await
-                        .map_err(StateError::Storage)?
-                        .ok_or(StateError::Integrity)?;
-                let contract_id: String =
-                    row.try_get("contract_id").map_err(StateError::Storage)?;
-                let prior_payload: Vec<u8> = row.try_get("payload").map_err(StateError::Storage)?;
-                if contract_id != event.contract_id || prior_payload != payload {
-                    return Err(StateError::StateConflict);
-                }
-            }
+            Self::insert_outbox_event(&mut transaction, event).await?;
             #[cfg(test)]
             {
                 event_index += 1;
@@ -705,6 +804,424 @@ impl ForgeStateStore {
         #[cfg(test)]
         crash_commit_process_at("after_commit");
         Ok(())
+    }
+
+    /// Stages already-confirmed external work for local finalization without making it retryable.
+    /// The result, local CAS, durable outbox and receipt are content-bound and persisted before
+    /// finalization is attempted, so a crash can resume the local half without re-running the effect.
+    pub async fn stage_effect_finalization(
+        &self,
+        identity: &str,
+        result: &Value,
+        state_transition: Option<&CanonicalStateTransition>,
+        events: &[StoredEvent],
+    ) -> Result<(), StateError> {
+        self.ensure_owner_healthy()?;
+        validate_identity(identity)?;
+        ensure_safe_payload(result)?;
+        let evidence = result
+            .get("_forgeCommandReceipt")
+            .and_then(|receipt| receipt.get("commitEvidenceFingerprint"))
+            .and_then(Value::as_str)
+            .ok_or(StateError::Integrity)?;
+        validate_digest(evidence)?;
+        if let Some(transition) = state_transition {
+            validate_key(&transition.owner)?;
+            validate_key(&transition.key)?;
+            ensure_safe_payload(&transition.value)?;
+        }
+        if events.len() > 1_024 {
+            return Err(StateError::Integrity);
+        }
+        for event in events {
+            validate_key(&event.event_id)?;
+            validate_key(&event.contract_id)?;
+            ensure_safe_payload(&event.payload)?;
+            validate_key(
+                event
+                    .payload
+                    .get("producer")
+                    .and_then(Value::as_str)
+                    .unwrap_or("legacy"),
+            )?;
+        }
+        let staged = PendingEffectFinalization {
+            result: result.clone(),
+            state_transition: state_transition.cloned(),
+            events: events.to_vec(),
+        };
+        let payload = serde_json::to_vec(&staged).map_err(StateError::Serialization)?;
+        if payload.len() > 16_777_216 {
+            return Err(StateError::Integrity);
+        }
+        let fingerprint = blake3::hash(&payload).to_hex().to_string();
+        let staged_at_ms = unix_time_ms()?;
+        let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+        let existing =
+            sqlx::query("SELECT payload, fingerprint FROM command_finalizations WHERE identity=?1")
+                .bind(identity)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?;
+        if let Some(row) = existing {
+            let existing_payload: Vec<u8> = row.try_get("payload").map_err(StateError::Storage)?;
+            let existing_fingerprint: String =
+                row.try_get("fingerprint").map_err(StateError::Storage)?;
+            transaction.rollback().await.map_err(StateError::Storage)?;
+            return if existing_payload == payload && existing_fingerprint == fingerprint {
+                Ok(())
+            } else {
+                Err(StateError::StateConflict)
+            };
+        }
+
+        let intent =
+            sqlx::query("SELECT state, owner_instance_id FROM command_intents WHERE identity=?1")
+                .bind(identity)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?
+                .ok_or(StateError::StateConflict)?;
+        let state: String = intent.try_get("state").map_err(StateError::Storage)?;
+        let owner: Option<String> = intent
+            .try_get("owner_instance_id")
+            .map_err(StateError::Storage)?;
+        let owned_in_flight =
+            state == "in_flight" && owner.as_deref() == Some(self.owner.instance_id.as_str());
+        let resolved_committed = matches!(
+            state.as_str(),
+            "unknown_outcome" | "effect_committed_pending_finalization"
+        ) && sqlx::query_scalar::<_, i64>(
+            "SELECT EXISTS(SELECT 1 FROM command_outcome_resolutions WHERE identity=?1 AND outcome='effect_committed')",
+        )
+        .bind(identity)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?
+            == 1;
+        if !owned_in_flight && !resolved_committed {
+            return Err(StateError::StateConflict);
+        }
+        if owned_in_flight {
+            let updated = sqlx::query(
+                "UPDATE command_intents SET state='effect_committed_pending_finalization', result=NULL, error_code='FORGE.COMMAND.EFFECT_COMMITTED_REQUIRES_FINALIZATION', owner_instance_id=NULL, lease_expires_at_ms=NULL, updated_at=CURRENT_TIMESTAMP WHERE identity=?1 AND state='in_flight' AND owner_instance_id=?2",
+            )
+            .bind(identity)
+            .bind(&self.owner.instance_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(StateError::Storage)?;
+            if updated.rows_affected() != 1 {
+                return Err(StateError::StateConflict);
+            }
+        }
+        sqlx::query(
+            "INSERT INTO command_finalizations(identity, payload, fingerprint, staged_at_ms, finalized_at_ms) VALUES(?1, ?2, ?3, ?4, NULL)",
+        )
+        .bind(identity)
+        .bind(payload)
+        .bind(fingerprint)
+        .bind(staged_at_ms)
+        .execute(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        transaction.commit().await.map_err(StateError::Storage)?;
+        Ok(())
+    }
+
+    /// Loads the durable finalization envelope after checking its content fingerprint.
+    pub async fn effect_finalization(
+        &self,
+        identity: &str,
+    ) -> Result<Option<EffectFinalizationRecord>, StateError> {
+        validate_identity(identity)?;
+        let row = sqlx::query(
+            "SELECT payload, fingerprint, finalized_at_ms FROM command_finalizations WHERE identity=?1",
+        )
+        .bind(identity)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(StateError::Storage)?;
+        row.map(|row| {
+            let payload: Vec<u8> = row.try_get("payload").map_err(StateError::Storage)?;
+            let fingerprint: String = row.try_get("fingerprint").map_err(StateError::Storage)?;
+            let finalized_at_ms: Option<i64> = row
+                .try_get("finalized_at_ms")
+                .map_err(StateError::Storage)?;
+            if blake3::hash(&payload).to_hex().as_str() != fingerprint {
+                return Err(StateError::Integrity);
+            }
+            let staged: PendingEffectFinalization =
+                serde_json::from_slice(&payload).map_err(StateError::Serialization)?;
+            ensure_safe_payload(&staged.result)?;
+            if let Some(transition) = staged.state_transition.as_ref() {
+                validate_key(&transition.owner)?;
+                validate_key(&transition.key)?;
+                ensure_safe_payload(&transition.value)?;
+            }
+            for event in &staged.events {
+                validate_key(&event.event_id)?;
+                validate_key(&event.contract_id)?;
+                ensure_safe_payload(&event.payload)?;
+            }
+            Ok(EffectFinalizationRecord {
+                fingerprint,
+                result: staged.result,
+                state_transition: staged.state_transition,
+                events: staged.events,
+                finalized_at_ms,
+            })
+        })
+        .transpose()
+    }
+
+    /// Replaces only the local CAS transition of a confirmed effect, bound to the exact
+    /// prior envelope fingerprint and a host-verified, single-use decision. The caller
+    /// must verify the host signature before entering this state-layer method.
+    pub async fn revise_effect_finalization(
+        &self,
+        identity: &str,
+        expected_fingerprint: &str,
+        state_transition: Option<&CanonicalStateTransition>,
+        decision_id: &str,
+        decision_fingerprint: &str,
+        revised_at_ms: u64,
+    ) -> Result<String, StateError> {
+        self.ensure_owner_healthy()?;
+        validate_identity(identity)?;
+        validate_digest(expected_fingerprint)?;
+        validate_key(decision_id)?;
+        validate_digest(decision_fingerprint)?;
+        let revised_at_ms = i64::try_from(revised_at_ms).map_err(|_| StateError::Integrity)?;
+        if let Some(transition) = state_transition {
+            validate_key(&transition.owner)?;
+            validate_key(&transition.key)?;
+            ensure_safe_payload(&transition.value)?;
+        }
+
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(StateError::Storage)?;
+        let row = sqlx::query(
+            "SELECT payload, fingerprint, finalized_at_ms FROM command_finalizations WHERE identity=?1",
+        )
+        .bind(identity)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?
+        .ok_or(StateError::StateConflict)?;
+        let payload: Vec<u8> = row.try_get("payload").map_err(StateError::Storage)?;
+        let prior_fingerprint: String = row.try_get("fingerprint").map_err(StateError::Storage)?;
+        let finalized_at_ms: Option<i64> = row
+            .try_get("finalized_at_ms")
+            .map_err(StateError::Storage)?;
+        if blake3::hash(&payload).to_hex().as_str() != prior_fingerprint {
+            return Err(StateError::Integrity);
+        }
+        if finalized_at_ms.is_some() || prior_fingerprint != expected_fingerprint {
+            return Err(StateError::StateConflict);
+        }
+        let state: Option<String> =
+            sqlx::query_scalar("SELECT state FROM command_intents WHERE identity=?1")
+                .bind(identity)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?;
+        if state.as_deref() != Some("effect_committed_pending_finalization") {
+            return Err(StateError::StateConflict);
+        }
+
+        let mut staged: PendingEffectFinalization =
+            serde_json::from_slice(&payload).map_err(StateError::Serialization)?;
+        staged.state_transition = state_transition.cloned();
+        let revised_payload = serde_json::to_vec(&staged).map_err(StateError::Serialization)?;
+        if revised_payload.len() > 16_777_216 {
+            return Err(StateError::Integrity);
+        }
+        let revised_fingerprint = blake3::hash(&revised_payload).to_hex().to_string();
+        if revised_fingerprint == prior_fingerprint {
+            return Err(StateError::StateConflict);
+        }
+        let revision_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM command_finalization_revisions WHERE identity=?1",
+        )
+        .bind(identity)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        if revision_count >= 32 {
+            return Err(StateError::Integrity);
+        }
+        let transition_payload =
+            serde_json::to_vec(&staged.state_transition).map_err(StateError::Serialization)?;
+        let consumed = sqlx::query(
+            "INSERT INTO authorization_decisions(decision_id, claims_fingerprint, consumed_at_ms, revoked_at_ms) VALUES(?1, ?2, ?3, NULL) ON CONFLICT(decision_id) DO NOTHING",
+        )
+        .bind(decision_id)
+        .bind(decision_fingerprint)
+        .bind(revised_at_ms)
+        .execute(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        if consumed.rows_affected() != 1 {
+            return Err(StateError::AuthorizationDecisionRejected);
+        }
+        sqlx::query(
+            "INSERT INTO command_finalization_revisions(identity, prior_fingerprint, revised_fingerprint, state_transition, decision_id, decision_fingerprint, revised_at_ms) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )
+        .bind(identity)
+        .bind(&prior_fingerprint)
+        .bind(&revised_fingerprint)
+        .bind(transition_payload)
+        .bind(decision_id)
+        .bind(decision_fingerprint)
+        .bind(revised_at_ms)
+        .execute(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        let updated = sqlx::query(
+            "UPDATE command_finalizations SET payload=?3, fingerprint=?4 WHERE identity=?1 AND fingerprint=?2 AND finalized_at_ms IS NULL",
+        )
+        .bind(identity)
+        .bind(&prior_fingerprint)
+        .bind(revised_payload)
+        .bind(&revised_fingerprint)
+        .execute(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        if updated.rows_affected() != 1 {
+            return Err(StateError::StateConflict);
+        }
+        transaction.commit().await.map_err(StateError::Storage)?;
+        Ok(revised_fingerprint)
+    }
+
+    /// Applies the proof-staged local transition, outbox and receipt in one transaction.
+    /// A CAS conflict leaves the payload pending and the confirmed effect non-retryable.
+    pub async fn finalize_effect_committed(&self, identity: &str) -> Result<bool, StateError> {
+        self.ensure_owner_healthy()?;
+        validate_identity(identity)?;
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(StateError::Storage)?;
+        let row = sqlx::query(
+            "SELECT payload, fingerprint, finalized_at_ms FROM command_finalizations WHERE identity=?1",
+        )
+        .bind(identity)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?
+        .ok_or(StateError::StateConflict)?;
+        let payload: Vec<u8> = row.try_get("payload").map_err(StateError::Storage)?;
+        let fingerprint: String = row.try_get("fingerprint").map_err(StateError::Storage)?;
+        let finalized_at: Option<i64> = row
+            .try_get("finalized_at_ms")
+            .map_err(StateError::Storage)?;
+        if blake3::hash(&payload).to_hex().as_str() != fingerprint {
+            return Err(StateError::Integrity);
+        }
+        let staged: PendingEffectFinalization =
+            serde_json::from_slice(&payload).map_err(StateError::Serialization)?;
+        if finalized_at.is_some() {
+            transaction.rollback().await.map_err(StateError::Storage)?;
+            return Ok(false);
+        }
+        let intent = sqlx::query("SELECT state FROM command_intents WHERE identity=?1")
+            .bind(identity)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(StateError::Storage)?
+            .ok_or(StateError::Integrity)?;
+        let state: String = intent.try_get("state").map_err(StateError::Storage)?;
+        if state != "effect_committed_pending_finalization" {
+            return Err(StateError::StateConflict);
+        }
+        ensure_safe_payload(&staged.result)?;
+        let result_bytes = serde_json::to_vec(&staged.result).map_err(StateError::Serialization)?;
+        if result_bytes.len() > 4_194_304 || staged.events.len() > 1_024 {
+            return Err(StateError::Integrity);
+        }
+        if let Some(transition) = staged.state_transition.as_ref() {
+            validate_key(&transition.owner)?;
+            validate_key(&transition.key)?;
+            ensure_safe_payload(&transition.value)?;
+            let value = serde_json::to_vec(&transition.value).map_err(StateError::Serialization)?;
+            let updated = if let Some(expected_version) = transition.expected_version {
+                if expected_version == 0 || expected_version > i64::MAX as u64 {
+                    return Err(StateError::StateConflict);
+                }
+                sqlx::query(
+                    "UPDATE canonical_state SET value=?3, version=version+1, updated_at=CURRENT_TIMESTAMP WHERE owner=?1 AND key=?2 AND version=?4",
+                )
+                .bind(&transition.owner)
+                .bind(&transition.key)
+                .bind(value)
+                .bind(expected_version as i64)
+                .execute(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?
+            } else {
+                sqlx::query(
+                    "INSERT INTO canonical_state(owner, key, value, version) VALUES(?1, ?2, ?3, 1) ON CONFLICT(owner, key) DO NOTHING",
+                )
+                .bind(&transition.owner)
+                .bind(&transition.key)
+                .bind(value)
+                .execute(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?
+            };
+            if updated.rows_affected() != 1 {
+                return Err(StateError::StateConflict);
+            }
+            #[cfg(test)]
+            crash_commit_process_at("finalize_state_cas");
+        }
+        #[cfg(test)]
+        let mut event_index = 0_usize;
+        for event in &staged.events {
+            Self::insert_outbox_event(&mut transaction, event).await?;
+            #[cfg(test)]
+            {
+                event_index += 1;
+                crash_commit_process_at(&format!("finalize_outbox_{event_index}"));
+            }
+        }
+        let updated = sqlx::query(
+            "UPDATE command_intents SET state='committed', result=?2, error_code=NULL, owner_instance_id=NULL, lease_expires_at_ms=NULL, updated_at=CURRENT_TIMESTAMP WHERE identity=?1 AND state='effect_committed_pending_finalization'",
+        )
+        .bind(identity)
+        .bind(result_bytes)
+        .execute(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        if updated.rows_affected() != 1 {
+            return Err(StateError::StateConflict);
+        }
+        #[cfg(test)]
+        crash_commit_process_at("finalize_receipt");
+        let finalized_at_ms = unix_time_ms()?;
+        let marked = sqlx::query(
+            "UPDATE command_finalizations SET finalized_at_ms=?2 WHERE identity=?1 AND finalized_at_ms IS NULL",
+        )
+        .bind(identity)
+        .bind(finalized_at_ms)
+        .execute(&mut *transaction)
+        .await
+        .map_err(StateError::Storage)?;
+        if marked.rows_affected() != 1 {
+            return Err(StateError::StateConflict);
+        }
+        #[cfg(test)]
+        crash_commit_process_at("finalize_marker");
+        transaction.commit().await.map_err(StateError::Storage)?;
+        #[cfg(test)]
+        crash_commit_process_at("finalize_after_commit");
+        Ok(true)
     }
 
     pub async fn begin_idempotent(
@@ -875,7 +1392,7 @@ impl ForgeStateStore {
         }
         let (next_state, error_code) = match kind {
             CommandOutcomeResolutionKind::EffectCommitted => (
-                "unknown_outcome",
+                "effect_committed_pending_finalization",
                 "FORGE.COMMAND.EFFECT_COMMITTED_REQUIRES_FINALIZATION",
             ),
             CommandOutcomeResolutionKind::EffectNotCommitted => {
@@ -953,62 +1470,84 @@ impl ForgeStateStore {
     }
 
     pub async fn enqueue_event(&self, event: &StoredEvent) -> Result<(), StateError> {
-        validate_key(&event.event_id)?;
-        validate_key(&event.contract_id)?;
-        ensure_safe_payload(&event.payload)?;
-        let payload = serde_json::to_vec(&event.payload).map_err(StateError::Serialization)?;
-        let inserted = sqlx::query("INSERT INTO event_outbox(event_id, contract_id, payload, delivery_state) VALUES(?1, ?2, ?3, 'pending') ON CONFLICT(event_id) DO NOTHING")
-            .bind(&event.event_id)
-            .bind(&event.contract_id)
-            .bind(&payload)
-            .execute(&self.pool)
-            .await
-            .map_err(StateError::Storage)?
-            .rows_affected();
-        if inserted == 0 {
-            let row =
-                sqlx::query("SELECT contract_id, payload FROM event_outbox WHERE event_id=?1")
-                    .bind(&event.event_id)
-                    .fetch_optional(&self.pool)
-                    .await
-                    .map_err(StateError::Storage)?
-                    .ok_or(StateError::Integrity)?;
-            let contract_id: String = row.try_get("contract_id").map_err(StateError::Storage)?;
-            let prior_payload: Vec<u8> = row.try_get("payload").map_err(StateError::Storage)?;
-            if contract_id != event.contract_id || prior_payload != payload {
-                return Err(StateError::StateConflict);
-            }
-        }
+        let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+        Self::insert_outbox_event(&mut transaction, event).await?;
+        transaction.commit().await.map_err(StateError::Storage)?;
         Ok(())
     }
 
-    pub async fn pending_events(&self, limit: u32) -> Result<Vec<StoredEvent>, StateError> {
+    pub async fn pending_events_for_consumer(
+        &self,
+        consumer_id: &str,
+        limit: u32,
+    ) -> Result<Vec<PendingEventRecord>, StateError> {
+        validate_key(consumer_id)?;
         let rows = sqlx::query(
-            "SELECT event_id, contract_id, payload FROM event_outbox WHERE delivery_state='pending' ORDER BY created_at, event_id LIMIT ?1",
+            "SELECT event.event_id, event.contract_id, event.payload FROM event_outbox AS event \
+             WHERE NOT EXISTS (SELECT 1 FROM event_consumer_state AS state \
+             WHERE state.event_id=event.event_id AND state.consumer_id=?1 \
+             AND (state.acknowledged=1 OR state.quarantined=1)) \
+             ORDER BY event.producer_id, event.producer_sequence LIMIT ?2",
         )
+        .bind(consumer_id)
         .bind(i64::from(limit.min(10_000)))
         .fetch_all(&self.pool)
         .await
         .map_err(StateError::Storage)?;
         rows.into_iter()
             .map(|row| {
-                let payload: Vec<u8> = row.try_get("payload").map_err(StateError::Storage)?;
-                Ok(StoredEvent {
+                Ok(PendingEventRecord {
                     event_id: row.try_get("event_id").map_err(StateError::Storage)?,
                     contract_id: row.try_get("contract_id").map_err(StateError::Storage)?,
-                    payload: serde_json::from_slice(&payload).map_err(StateError::Serialization)?,
+                    payload_bytes: row.try_get("payload").map_err(StateError::Storage)?,
                 })
             })
             .collect()
     }
 
-    pub async fn mark_event_delivered(&self, event_id: &str) -> Result<bool, StateError> {
+    pub async fn acknowledge_event_for_consumer(
+        &self,
+        event_id: &str,
+        consumer_id: &str,
+    ) -> Result<bool, StateError> {
         validate_key(event_id)?;
-        let result = sqlx::query("UPDATE event_outbox SET delivery_state='delivered' WHERE event_id=?1 AND delivery_state='pending'")
+        validate_key(consumer_id)?;
+        let result = sqlx::query(
+            "INSERT INTO event_consumer_state(event_id, consumer_id, delivery_attempts, acknowledged, quarantined, last_error_code) \
+             SELECT event_id, ?2, 0, 1, 0, NULL FROM event_outbox WHERE event_id=?1 \
+             ON CONFLICT(event_id, consumer_id) DO UPDATE SET acknowledged=1, updated_at=CURRENT_TIMESTAMP \
+             WHERE event_consumer_state.acknowledged=0 AND event_consumer_state.quarantined=0",
+        )
             .bind(event_id)
+            .bind(consumer_id)
             .execute(&self.pool)
             .await
             .map_err(StateError::Storage)?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    pub async fn record_event_decode_failure(
+        &self,
+        event_id: &str,
+        consumer_id: &str,
+    ) -> Result<bool, StateError> {
+        validate_key(event_id)?;
+        validate_key(consumer_id)?;
+        let result = sqlx::query(
+            "INSERT INTO event_consumer_state(event_id, consumer_id, delivery_attempts, acknowledged, quarantined, last_error_code) \
+             SELECT event_id, ?2, 1, 0, 0, 'FORGE.EVENT.POISON_PAYLOAD' FROM event_outbox WHERE event_id=?1 \
+             ON CONFLICT(event_id, consumer_id) DO UPDATE SET \
+             delivery_attempts=event_consumer_state.delivery_attempts+1, \
+             quarantined=CASE WHEN event_consumer_state.delivery_attempts+1 >= ?3 THEN 1 ELSE 0 END, \
+             last_error_code='FORGE.EVENT.POISON_PAYLOAD', updated_at=CURRENT_TIMESTAMP \
+             WHERE event_consumer_state.acknowledged=0 AND event_consumer_state.quarantined=0",
+        )
+        .bind(event_id)
+        .bind(consumer_id)
+        .bind(EVENT_POISON_QUARANTINE_THRESHOLD)
+        .execute(&self.pool)
+        .await
+        .map_err(StateError::Storage)?;
         Ok(result.rows_affected() == 1)
     }
 
@@ -1186,9 +1725,11 @@ impl ForgeStateStore {
             .map_err(|_| StateError::InvalidRoot)?;
         let backup_db = backup_root.join("forge.sqlite3");
         let manifest_path = backup_root.join("manifest.json");
+        let backup_cas = backup_root.join("cas");
         reject_symlink_if_present(&backup_db)?;
         reject_symlink_if_present(&manifest_path)?;
-        if backup_db.exists() || manifest_path.exists() {
+        reject_symlink_if_present(&backup_cas)?;
+        if backup_db.exists() || manifest_path.exists() || backup_cas.exists() {
             return Err(StateError::BackupTargetExists);
         }
         let backup_path = backup_db.to_string_lossy().into_owned();
@@ -1198,26 +1739,39 @@ impl ForgeStateStore {
             .await
             .map_err(StateError::Storage)?;
         let bytes = fs::read(&backup_db).map_err(StateError::Filesystem)?;
-        let digest = blake3::hash(&bytes).to_hex().to_string();
-        let manifest = serde_json::json!({
-            "schemaVersion": 1,
-            "databaseSchemaVersion": SCHEMA_VERSION,
-            "databaseFingerprint": digest,
-            "databaseHashAlgorithm": "blake3"
-        });
+        let database_fingerprint = blake3::hash(&bytes).to_hex().to_string();
+        let cas_objects = snapshot_cas(&self.root, &backup_root)?;
+        let unsigned = BackupManifestUnsigned {
+            schema_version: 2,
+            database_schema_version: SCHEMA_VERSION,
+            database_fingerprint,
+            database_hash_algorithm: "blake3".into(),
+            cas_objects,
+        };
+        let backup_fingerprint = backup_manifest_fingerprint(&unsigned)?;
+        let manifest = BackupManifest {
+            schema_version: unsigned.schema_version,
+            database_schema_version: unsigned.database_schema_version,
+            database_fingerprint: unsigned.database_fingerprint,
+            database_hash_algorithm: unsigned.database_hash_algorithm,
+            cas_objects: unsigned.cas_objects,
+            backup_fingerprint: backup_fingerprint.clone(),
+        };
         let manifest_bytes =
             serde_json::to_vec_pretty(&manifest).map_err(StateError::Serialization)?;
         if let Err(error) = write_atomic(&manifest_path, &manifest_bytes) {
             let _ = fs::remove_file(&backup_db);
             return Err(error);
         }
-        Ok(digest)
+        Ok(backup_fingerprint)
     }
 
     pub async fn restore_from_backup(
         backup_root: impl AsRef<Path>,
         restore_root: impl AsRef<Path>,
+        expected_backup_fingerprint: &str,
     ) -> Result<Self, StateError> {
+        validate_digest(expected_backup_fingerprint)?;
         let backup_root = backup_root
             .as_ref()
             .canonicalize()
@@ -1231,14 +1785,25 @@ impl ForgeStateStore {
             serde_json::from_slice(&manifest_bytes).map_err(StateError::Serialization)?;
         let database_bytes = fs::read(&backup_db).map_err(StateError::Filesystem)?;
         let actual_fingerprint = blake3::hash(&database_bytes).to_hex().to_string();
-        if manifest.schema_version != 1
+        let unsigned = BackupManifestUnsigned {
+            schema_version: manifest.schema_version,
+            database_schema_version: manifest.database_schema_version,
+            database_fingerprint: manifest.database_fingerprint.clone(),
+            database_hash_algorithm: manifest.database_hash_algorithm.clone(),
+            cas_objects: manifest.cas_objects.clone(),
+        };
+        let calculated_backup_fingerprint = backup_manifest_fingerprint(&unsigned)?;
+        if manifest.schema_version != 2
             || manifest.database_schema_version < 1
             || manifest.database_schema_version > SCHEMA_VERSION
             || manifest.database_hash_algorithm != "blake3"
             || manifest.database_fingerprint != actual_fingerprint
+            || manifest.backup_fingerprint != expected_backup_fingerprint
+            || calculated_backup_fingerprint != expected_backup_fingerprint
         {
             return Err(StateError::Integrity);
         }
+        let cas_objects = verify_backup_cas(&backup_root, &manifest.cas_objects)?;
 
         fs::create_dir_all(restore_root.as_ref()).map_err(StateError::Filesystem)?;
         let restore_root = restore_root
@@ -1246,22 +1811,28 @@ impl ForgeStateStore {
             .canonicalize()
             .map_err(|_| StateError::InvalidRoot)?;
         let restored_db = restore_root.join("forge.sqlite3");
+        let restored_cas = restore_root.join("cas");
         reject_symlink_if_present(&restored_db)?;
-        if restored_db.exists() {
+        reject_symlink_if_present(&restored_cas)?;
+        if restored_db.exists() || restored_cas.exists() {
             return Err(StateError::BackupTargetExists);
         }
-        let mut source = OpenOptions::new()
-            .read(true)
-            .open(&backup_db)
-            .map_err(StateError::Filesystem)?;
         let mut destination = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&restored_db)
             .map_err(StateError::Filesystem)?;
-        std::io::copy(&mut source, &mut destination).map_err(StateError::Filesystem)?;
+        destination
+            .write_all(&database_bytes)
+            .map_err(StateError::Filesystem)?;
         destination.sync_all().map_err(StateError::Filesystem)?;
         drop(destination);
+        ensure_real_directory(&restored_cas, true)?;
+        for (entry, bytes) in cas_objects {
+            let shard = restored_cas.join(&entry.digest[..2]);
+            ensure_real_directory(&shard, true)?;
+            write_atomic(&shard.join(&entry.digest), &bytes)?;
+        }
         let restored = Self::open(&restore_root).await?;
         restored.integrity_check().await?;
         Ok(restored)
@@ -1420,6 +1991,74 @@ impl ForgeStateStore {
                 .map_err(StateError::Storage)?;
             transaction.commit().await.map_err(StateError::Storage)?;
         }
+        if current < 5 {
+            let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+            let event_columns = sqlx::query("PRAGMA table_info(event_outbox)")
+                .fetch_all(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?;
+            let has_event_column = |name: &str| -> Result<bool, StateError> {
+                event_columns
+                    .iter()
+                    .map(|row| {
+                        row.try_get::<String, _>("name")
+                            .map_err(StateError::Storage)
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(|names| names.iter().any(|column| column == name))
+            };
+            if !has_event_column("producer_id")? {
+                sqlx::query(EVENT_DELIVERY_MIGRATIONS[0])
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?;
+            }
+            if !has_event_column("producer_sequence")? {
+                sqlx::query(EVENT_DELIVERY_MIGRATIONS[1])
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?;
+            }
+            for statement in EVENT_DELIVERY_MIGRATIONS.iter().skip(2).copied() {
+                sqlx::query(statement)
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?;
+            }
+            sqlx::query("PRAGMA user_version = 5")
+                .execute(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?;
+            transaction.commit().await.map_err(StateError::Storage)?;
+        }
+        if current < 6 {
+            let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+            for statement in EFFECT_FINALIZATION_MIGRATIONS.iter().copied() {
+                sqlx::query(statement)
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?;
+            }
+            sqlx::query("PRAGMA user_version = 6")
+                .execute(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?;
+            transaction.commit().await.map_err(StateError::Storage)?;
+        }
+        if current < 7 {
+            let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+            for statement in EFFECT_FINALIZATION_REVISION_MIGRATIONS.iter().copied() {
+                sqlx::query(statement)
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(StateError::Storage)?;
+            }
+            sqlx::query("PRAGMA user_version = 7")
+                .execute(&mut *transaction)
+                .await
+                .map_err(StateError::Storage)?;
+            transaction.commit().await.map_err(StateError::Storage)?;
+        }
         Ok(())
     }
 
@@ -1510,7 +2149,9 @@ fn ensure_safe_payload(value: &Value) -> Result<(), StateError> {
         match current {
             Value::Object(fields) => {
                 for (name, value) in fields {
-                    if secret_bearing_field(name) {
+                    if secret_bearing_field(name)
+                        && !(value.is_number() && safe_numeric_usage_field(name))
+                    {
                         return Err(StateError::SensitivePayload);
                     }
                     pending.push((value, depth + 1));
@@ -1532,27 +2173,78 @@ pub fn validate_payload_for_persistence(value: &Value) -> Result<(), StateError>
     ensure_safe_payload(value)
 }
 
+fn safe_numeric_usage_field(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "tokens" | "cache_tokens_reused" | "cachetokensreused"
+    )
+}
+
 fn secret_bearing_field(name: &str) -> bool {
-    let normalized = name
-        .bytes()
-        .filter(u8::is_ascii_alphanumeric)
-        .map(char::from)
-        .collect::<String>()
-        .to_ascii_lowercase();
-    [
+    let mut normalized = String::with_capacity(name.len() + 8);
+    let characters = name.chars().collect::<Vec<_>>();
+    for (index, character) in characters.iter().copied().enumerate() {
+        if !character.is_ascii_alphanumeric() {
+            normalized.push(' ');
+            continue;
+        }
+        let previous = index
+            .checked_sub(1)
+            .and_then(|i| characters.get(i))
+            .copied();
+        let next = characters.get(index + 1).copied();
+        let camel_boundary = character.is_ascii_uppercase()
+            && previous.is_some_and(|value| value.is_ascii_lowercase() || value.is_ascii_digit())
+            || character.is_ascii_uppercase()
+                && previous.is_some_and(|value| value.is_ascii_uppercase())
+                && next.is_some_and(|value| value.is_ascii_lowercase());
+        if camel_boundary {
+            normalized.push(' ');
+        }
+        normalized.push(character.to_ascii_lowercase());
+    }
+    let tokens = normalized.split_ascii_whitespace().collect::<Vec<_>>();
+    let sensitive_parts = [
         "password",
         "passwd",
         "secret",
+        "secrets",
         "token",
-        "apikey",
-        "privatekey",
-        "secretaccesskey",
         "credential",
+        "credentials",
         "cookie",
+        "cookies",
         "authorization",
-    ]
-    .iter()
-    .any(|suffix| normalized.ends_with(suffix))
+        "authorizationheader",
+    ];
+    if tokens.iter().any(|token| {
+        sensitive_parts.contains(token)
+            || sensitive_parts.iter().any(|marker| token.contains(marker))
+    }) {
+        return true;
+    }
+
+    // `key` is sensitive as a complete name/component and in common compound
+    // credential names. Requiring a token or a known compound avoids treating
+    // unrelated words such as "monkey" as credential fields.
+    let known_compounds = [
+        "apikey",
+        "accesskey",
+        "clientkey",
+        "encryptionkey",
+        "kmskey",
+        "privatekey",
+        "publickey",
+        "secretkey",
+        "signingkey",
+        "sshkey",
+    ];
+    tokens
+        .iter()
+        .any(|token| *token == "key" || *token == "keys")
+        || known_compounds
+            .iter()
+            .any(|compound| name.to_ascii_lowercase().contains(compound))
 }
 
 fn validate_error_code(value: &str) -> Result<(), StateError> {
@@ -1649,6 +2341,121 @@ fn reject_symlink_if_present(path: &Path) -> Result<(), StateError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(StateError::Filesystem(error)),
     }
+}
+
+fn backup_manifest_fingerprint(unsigned: &BackupManifestUnsigned) -> Result<String, StateError> {
+    let bytes = serde_json::to_vec(unsigned).map_err(StateError::Serialization)?;
+    Ok(blake3::hash(&bytes).to_hex().to_string())
+}
+
+fn read_cas_snapshot(cas_root: &Path) -> Result<Vec<(BackupCasObject, Vec<u8>)>, StateError> {
+    if !ensure_real_directory(cas_root, false)? {
+        return Ok(Vec::new());
+    }
+    let mut objects = Vec::new();
+    for shard_entry in fs::read_dir(cas_root).map_err(StateError::Filesystem)? {
+        let shard_entry = shard_entry.map_err(StateError::Filesystem)?;
+        let shard_path = shard_entry.path();
+        reject_symlink_if_present(&shard_path)?;
+        if !shard_entry
+            .file_type()
+            .map_err(StateError::Filesystem)?
+            .is_dir()
+        {
+            return Err(StateError::Integrity);
+        }
+        let shard = shard_entry
+            .file_name()
+            .into_string()
+            .map_err(|_| StateError::Integrity)?
+            .to_ascii_lowercase();
+        if shard.len() != 2 || !shard.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(StateError::Integrity);
+        }
+        for object_entry in fs::read_dir(&shard_path).map_err(StateError::Filesystem)? {
+            let object_entry = object_entry.map_err(StateError::Filesystem)?;
+            let object_path = object_entry.path();
+            reject_symlink_if_present(&object_path)?;
+            if !object_entry
+                .file_type()
+                .map_err(StateError::Filesystem)?
+                .is_file()
+            {
+                return Err(StateError::Integrity);
+            }
+            let digest = object_entry
+                .file_name()
+                .into_string()
+                .map_err(|_| StateError::Integrity)?
+                .to_ascii_lowercase();
+            validate_digest(&digest)?;
+            if !digest.starts_with(&shard) {
+                return Err(StateError::Integrity);
+            }
+            let bytes = fs::read(&object_path).map_err(StateError::Filesystem)?;
+            if blake3::hash(&bytes).to_hex().as_str() != digest {
+                return Err(StateError::Integrity);
+            }
+            objects.push((
+                BackupCasObject {
+                    digest,
+                    size: u64::try_from(bytes.len()).map_err(|_| StateError::Integrity)?,
+                },
+                bytes,
+            ));
+        }
+    }
+    objects.sort_by(|left, right| left.0.digest.cmp(&right.0.digest));
+    if objects
+        .windows(2)
+        .any(|pair| pair[0].0.digest == pair[1].0.digest)
+    {
+        return Err(StateError::Integrity);
+    }
+    Ok(objects)
+}
+
+fn snapshot_cas(
+    source_root: &Path,
+    backup_root: &Path,
+) -> Result<Vec<BackupCasObject>, StateError> {
+    let source_cas = source_root.join("cas");
+    let backup_cas = backup_root.join("cas");
+    reject_symlink_if_present(&backup_cas)?;
+    ensure_real_directory(&backup_cas, true)?;
+    let objects = read_cas_snapshot(&source_cas)?;
+    for (entry, bytes) in &objects {
+        let shard = backup_cas.join(&entry.digest[..2]);
+        ensure_real_directory(&shard, true)?;
+        write_atomic(&shard.join(&entry.digest), bytes)?;
+    }
+    Ok(objects.into_iter().map(|(entry, _)| entry).collect())
+}
+
+fn verify_backup_cas(
+    backup_root: &Path,
+    expected: &[BackupCasObject],
+) -> Result<Vec<(BackupCasObject, Vec<u8>)>, StateError> {
+    let mut expected = expected.to_vec();
+    expected.sort_by(|left, right| left.digest.cmp(&right.digest));
+    if expected
+        .windows(2)
+        .any(|pair| pair[0].digest == pair[1].digest)
+    {
+        return Err(StateError::Integrity);
+    }
+    for object in &expected {
+        validate_digest(&object.digest)?;
+    }
+    let actual = read_cas_snapshot(&backup_root.join("cas"))?;
+    let actual_manifest = actual
+        .iter()
+        .map(|(entry, _)| entry.clone())
+        .collect::<Vec<_>>();
+    if actual_manifest != expected {
+        return Err(StateError::Integrity);
+    }
+    Ok(actual)
 }
 
 fn ensure_real_directory(path: &Path, create: bool) -> Result<bool, StateError> {
@@ -1764,13 +2571,31 @@ mod tests {
             "oauth_secret",
             "ssh_private_key",
             "aws_secret_access_key",
+            "signingKey",
+            "credentials",
+            "client_secret_value",
+            "clientSecretValue",
+            "accessTokenMetadata",
         ] {
-            let keyed_secret = json!({field: "opaque-reference-value"});
+            let keyed_secret = json!({(field): "opaque-reference-value"});
             assert!(matches!(
                 validate_payload_for_persistence(&keyed_secret),
                 Err(StateError::SensitivePayload)
             ));
         }
+        for keyed_secret in [
+            json!({"credentials": 123}),
+            json!({"api_token": 123}),
+            json!({"signingKey": 123}),
+        ] {
+            assert!(matches!(
+                validate_payload_for_persistence(&keyed_secret),
+                Err(StateError::SensitivePayload)
+            ));
+        }
+        assert!(validate_payload_for_persistence(&json!({"tokens": 37})).is_ok());
+        assert!(validate_payload_for_persistence(&json!({"cacheTokensReused": 12})).is_ok());
+        assert!(validate_payload_for_persistence(&json!({"monkey": "ordinary value"})).is_ok());
 
         let canonical_error = store
             .put_canonical("project", "private", &payload)
@@ -1845,7 +2670,7 @@ mod tests {
         ));
         assert!(
             store
-                .pending_events(10)
+                .pending_events_for_consumer("test-observer", 10)
                 .await
                 .expect("event replay")
                 .is_empty()
@@ -1919,7 +2744,7 @@ mod tests {
         let record = usage_record("request-1");
         let limit = usage_limit(100, 500);
 
-        assert_eq!(store.schema_version(), 4);
+        assert_eq!(store.schema_version(), 7);
         assert!(
             store
                 .record_resource_usage(&record, &limit)
@@ -2199,7 +3024,7 @@ mod tests {
         );
         assert_eq!(
             owner
-                .pending_events(10)
+                .pending_events_for_consumer("test-observer", 10)
                 .await
                 .expect("one outbox fact")
                 .len(),
@@ -2271,7 +3096,14 @@ mod tests {
                 .expect("state"),
             Some(json!({"value": 1}))
         );
-        assert_eq!(store.pending_events(10).await.expect("outbox").len(), 1);
+        assert_eq!(
+            store
+                .pending_events_for_consumer("test-observer", 10)
+                .await
+                .expect("outbox")
+                .len(),
+            1
+        );
         assert_eq!(
             store
                 .begin_idempotent(&identity)
@@ -2307,7 +3139,14 @@ mod tests {
                 .expect("state"),
             Some(json!({"value": 2}))
         );
-        assert_eq!(store.pending_events(10).await.expect("outbox").len(), 2);
+        assert_eq!(
+            store
+                .pending_events_for_consumer("test-observer", 10)
+                .await
+                .expect("outbox")
+                .len(),
+            2
+        );
         assert_eq!(
             store
                 .begin_idempotent(&identity)
@@ -2317,6 +3156,394 @@ mod tests {
                 .state,
             IdempotencyState::Committed
         );
+    }
+
+    #[tokio::test]
+    async fn confirmed_effect_finalization_is_recoverable_and_keeps_state_outbox_and_receipt_atomic()
+     {
+        let root = tempfile::tempdir().expect("temp directory");
+        let identity = digest("confirmed-effect-finalization");
+        let result = json!({
+            "value": 2,
+            "_forgeCommandReceipt": {
+                "commitEvidenceFingerprint": digest("external-effect-committed")
+            }
+        });
+        let event = StoredEvent {
+            event_id: "evt.effect-confirmed".into(),
+            contract_id: "forge.event.effect-confirmed".into(),
+            payload: json!({"producer": "kernel.command", "value": 2}),
+        };
+        let store = ForgeStateStore::open(root.path())
+            .await
+            .expect("store opens");
+        store
+            .put_canonical("project", "state", &json!({"value": 1}))
+            .await
+            .expect("seed canonical state");
+        assert!(
+            store
+                .begin_idempotent(&identity)
+                .await
+                .expect("begin effectful command")
+                .is_none()
+        );
+        store
+            .stage_effect_finalization(
+                &identity,
+                &result,
+                Some(&CanonicalStateTransition {
+                    owner: "project".into(),
+                    key: "state".into(),
+                    expected_version: Some(99),
+                    value: json!({"value": 2}),
+                }),
+                std::slice::from_ref(&event),
+            )
+            .await
+            .expect("persist effect result before local finalization");
+        assert!(matches!(
+            store.finalize_effect_committed(&identity).await,
+            Err(StateError::StateConflict)
+        ));
+        assert_eq!(
+            store
+                .get_canonical("project", "state")
+                .await
+                .expect("state remains unchanged"),
+            Some(json!({"value": 1}))
+        );
+        assert!(
+            store
+                .pending_events_for_consumer("consumer-a", 10)
+                .await
+                .expect("no event before the atomic commit")
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .begin_idempotent(&identity)
+                .await
+                .expect("read intent")
+                .expect("intent remains durable")
+                .state,
+            IdempotencyState::EffectCommittedPendingFinalization
+        );
+        assert!(matches!(
+            store
+                .reconcile_unknown_outcome(
+                    &identity,
+                    CommandOutcomeResolutionKind::EffectNotCommitted,
+                    &digest("contradictory-not-committed"),
+                    "decision.contradict.effect-not-committed",
+                    &digest("decision.contradict.effect-not-committed"),
+                    1,
+                )
+                .await,
+            Err(StateError::StateConflict)
+        ));
+
+        let pending = store
+            .effect_finalization(&identity)
+            .await
+            .expect("read staged effect")
+            .expect("pending finalization exists");
+        let revised_transition = CanonicalStateTransition {
+            owner: "project".into(),
+            key: "state".into(),
+            expected_version: Some(1),
+            value: json!({"value": 2}),
+        };
+        let revised_fingerprint = store
+            .revise_effect_finalization(
+                &identity,
+                &pending.fingerprint,
+                Some(&revised_transition),
+                "decision.effect-finalization.revision-1",
+                &digest("decision.effect-finalization.revision-1"),
+                2,
+            )
+            .await
+            .expect("host-authorized revision reaches the state boundary");
+        assert_ne!(revised_fingerprint, pending.fingerprint);
+        let revision_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM command_finalization_revisions WHERE identity=?1",
+        )
+        .bind(&identity)
+        .fetch_one(&store.pool)
+        .await
+        .expect("read immutable revision audit");
+        assert_eq!(revision_count, 1);
+        assert!(matches!(
+            store
+                .revise_effect_finalization(
+                    &identity,
+                    &revised_fingerprint,
+                    Some(&CanonicalStateTransition {
+                        owner: "project".into(),
+                        key: "state".into(),
+                        expected_version: Some(2),
+                        value: json!({"value": 3}),
+                    }),
+                    "decision.effect-finalization.revision-1",
+                    &digest("decision.effect-finalization.revision-1"),
+                    3,
+                )
+                .await,
+            Err(StateError::AuthorizationDecisionRejected)
+        ));
+
+        drop(store);
+        let recovered = ForgeStateStore::open(root.path())
+            .await
+            .expect("reopen pending finalization");
+        assert_eq!(
+            recovered
+                .effect_finalization(&identity)
+                .await
+                .expect("read reopened staged effect")
+                .expect("staged effect survives reopen")
+                .fingerprint,
+            revised_fingerprint
+        );
+        assert!(
+            recovered
+                .finalize_effect_committed(&identity)
+                .await
+                .expect("resume local finalization after reopen")
+        );
+        assert_eq!(
+            recovered
+                .get_canonical("project", "state")
+                .await
+                .expect("read committed state"),
+            Some(json!({"value": 2}))
+        );
+        assert_eq!(
+            recovered
+                .pending_events_for_consumer("consumer-a", 10)
+                .await
+                .expect("consumer a event")
+                .iter()
+                .map(|record| record.event_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["evt.effect-confirmed"]
+        );
+        assert_eq!(
+            recovered
+                .pending_events_for_consumer("consumer-b", 10)
+                .await
+                .expect("consumer b has independent event state")
+                .len(),
+            1
+        );
+        let receipt = recovered
+            .begin_idempotent(&identity)
+            .await
+            .expect("read durable receipt")
+            .expect("committed command receipt");
+        assert_eq!(receipt.state, IdempotencyState::Committed);
+        assert_eq!(receipt.result, Some(result));
+        assert!(
+            recovered
+                .effect_finalization(&identity)
+                .await
+                .expect("read finalization record")
+                .expect("finalization record")
+                .finalized_at_ms
+                .is_some()
+        );
+        assert!(
+            !recovered
+                .finalize_effect_committed(&identity)
+                .await
+                .expect("duplicate finalization is idempotent")
+        );
+        assert_eq!(
+            recovered
+                .pending_events_for_consumer("consumer-a", 10)
+                .await
+                .expect("one immutable outbox event")
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn command_finalization_process_crashes_recover_atomically_at_each_write_boundary() {
+        let identity = digest("confirmed-effect-finalization-crash");
+        if let Ok(root) = std::env::var("FORGE_TEST_FINALIZATION_CRASH_ROOT") {
+            let store = ForgeStateStore::open(root)
+                .await
+                .expect("child crash store opens");
+            store
+                .finalize_effect_committed(&identity)
+                .await
+                .expect("child finalizes staged effect before boundary exit");
+            panic!("requested finalization boundary did not terminate the child process");
+        }
+
+        for boundary in [
+            "finalize_state_cas",
+            "finalize_outbox_1",
+            "finalize_outbox_2",
+            "finalize_receipt",
+            "finalize_marker",
+            "finalize_after_commit",
+        ] {
+            let root = tempfile::tempdir().expect("process-crash state root");
+            let result = json!({
+                "value": 2,
+                "_forgeCommandReceipt": {
+                    "commitEvidenceFingerprint": digest("crash-boundary-effect")
+                }
+            });
+            let store = ForgeStateStore::open(root.path())
+                .await
+                .expect("prepare crash state");
+            store
+                .put_canonical("project", "state", &json!({"value": 1}))
+                .await
+                .expect("seed state before command");
+            assert!(
+                store
+                    .begin_idempotent(&identity)
+                    .await
+                    .expect("begin effect")
+                    .is_none()
+            );
+            store
+                .stage_effect_finalization(
+                    &identity,
+                    &result,
+                    Some(&CanonicalStateTransition {
+                        owner: "project".into(),
+                        key: "state".into(),
+                        expected_version: Some(1),
+                        value: json!({"value": 2}),
+                    }),
+                    &[
+                        StoredEvent {
+                            event_id: "evt.finalize.crash.one".into(),
+                            contract_id: "forge.event.confirmed".into(),
+                            payload: json!({"producer": "kernel.command", "sequence": 1}),
+                        },
+                        StoredEvent {
+                            event_id: "evt.finalize.crash.two".into(),
+                            contract_id: "forge.event.confirmed".into(),
+                            payload: json!({"producer": "kernel.command", "sequence": 2}),
+                        },
+                    ],
+                )
+                .await
+                .expect("stage effect before crashable finalization");
+            drop(store);
+
+            let child = Command::new(std::env::current_exe().expect("current test executable"))
+                .arg("command_finalization_process_crashes_recover_atomically_at_each_write_boundary")
+                .arg("--nocapture")
+                .env("FORGE_TEST_FINALIZATION_CRASH_ROOT", root.path())
+                .env("FORGE_TEST_COMMIT_CRASH_BOUNDARY", boundary)
+                .output()
+                .expect("finalization crash child starts");
+            assert_eq!(
+                child.status.code(),
+                Some(86),
+                "child did not exit at requested finalization boundary {boundary}: {}",
+                String::from_utf8_lossy(&child.stderr)
+            );
+
+            let recovered = ForgeStateStore::open(root.path())
+                .await
+                .expect("reopen after finalization crash");
+            let committed = boundary == "finalize_after_commit";
+            if committed {
+                assert_eq!(
+                    recovered
+                        .get_canonical("project", "state")
+                        .await
+                        .expect("committed state"),
+                    Some(json!({"value": 2}))
+                );
+                assert_eq!(
+                    recovered
+                        .begin_idempotent(&identity)
+                        .await
+                        .expect("read committed receipt")
+                        .expect("receipt")
+                        .state,
+                    IdempotencyState::Committed
+                );
+                assert!(
+                    recovered
+                        .effect_finalization(&identity)
+                        .await
+                        .expect("read finalization")
+                        .expect("finalization")
+                        .finalized_at_ms
+                        .is_some()
+                );
+                assert_eq!(
+                    recovered
+                        .pending_events_for_consumer("crash-test-consumer", 10)
+                        .await
+                        .expect("committed outbox events")
+                        .len(),
+                    2
+                );
+                assert!(
+                    !recovered
+                        .finalize_effect_committed(&identity)
+                        .await
+                        .expect("committed replay is a no-op")
+                );
+            } else {
+                assert_eq!(
+                    recovered
+                        .get_canonical("project", "state")
+                        .await
+                        .expect("uncommitted state"),
+                    Some(json!({"value": 1}))
+                );
+                assert_eq!(
+                    recovered
+                        .begin_idempotent(&identity)
+                        .await
+                        .expect("read pending receipt")
+                        .expect("pending intent")
+                        .state,
+                    IdempotencyState::EffectCommittedPendingFinalization
+                );
+                assert!(
+                    recovered
+                        .pending_events_for_consumer("crash-test-consumer", 10)
+                        .await
+                        .expect("no partial outbox events")
+                        .is_empty()
+                );
+                assert!(
+                    recovered
+                        .finalize_effect_committed(&identity)
+                        .await
+                        .expect("retry local finalization after rollback")
+                );
+                assert_eq!(
+                    recovered
+                        .get_canonical("project", "state")
+                        .await
+                        .expect("recovered state"),
+                    Some(json!({"value": 2}))
+                );
+                assert_eq!(
+                    recovered
+                        .pending_events_for_consumer("crash-test-consumer", 10)
+                        .await
+                        .expect("all outbox events committed on retry")
+                        .len(),
+                    2
+                );
+            }
+        }
     }
 
     #[tokio::test]
@@ -2408,7 +3635,7 @@ mod tests {
             );
             assert_eq!(
                 store
-                    .pending_events(10)
+                    .pending_events_for_consumer("test-observer", 10)
                     .await
                     .expect("outbox after recovery")
                     .len(),
@@ -2475,7 +3702,7 @@ mod tests {
             .await
             .expect("v1 to current schema migration");
         store.integrity_check().await.expect("migrated integrity");
-        assert_eq!(store.schema_version(), 4);
+        assert_eq!(store.schema_version(), 7);
         assert_eq!(
             store
                 .get_canonical("kernel", "migration.marker")
@@ -2523,7 +3750,7 @@ mod tests {
             .expect("set v3 schema version");
 
         store.migrate().await.expect("v3 to v4 migration");
-        assert_eq!(store.schema_version(), 4);
+        assert_eq!(store.schema_version(), 7);
         store.integrity_check().await.expect("migrated integrity");
         let intent = store
             .begin_idempotent(&identity)
@@ -2689,7 +3916,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn durable_event_outbox_is_ordered_and_acknowledged_once() {
+    async fn durable_event_acknowledgements_are_independent_per_consumer() {
         let root = tempfile::tempdir().expect("temp directory");
         let store = ForgeStateStore::open(root.path())
             .await
@@ -2705,26 +3932,59 @@ mod tests {
             .await
             .expect("identical retry is idempotent");
         assert_eq!(
-            store.pending_events(10).await.expect("read pending"),
-            vec![event]
+            store
+                .pending_events_for_consumer("consumer-a", 10)
+                .await
+                .expect("read pending")
+                .len(),
+            1
         );
         assert!(
             store
-                .mark_event_delivered("evt-1")
+                .pending_events_for_consumer("consumer-b", 10)
                 .await
-                .expect("ack event")
+                .expect("other consumer still pending")
+                .iter()
+                .any(|record| record.event_id == "evt-1")
+        );
+        assert!(
+            store
+                .acknowledge_event_for_consumer("evt-1", "consumer-a")
+                .await
+                .expect("ack consumer a")
         );
         assert!(
             !store
-                .mark_event_delivered("evt-1")
+                .acknowledge_event_for_consumer("evt-1", "consumer-a")
                 .await
                 .expect("second ack is a no-op")
         );
         assert!(
             store
-                .pending_events(10)
+                .pending_events_for_consumer("consumer-a", 10)
                 .await
-                .expect("pending after ack")
+                .expect("consumer a acknowledged")
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .pending_events_for_consumer("consumer-b", 10)
+                .await
+                .expect("consumer b remains pending")
+                .len(),
+            1
+        );
+        assert!(
+            store
+                .acknowledge_event_for_consumer("evt-1", "consumer-b")
+                .await
+                .expect("ack consumer b")
+        );
+        assert!(
+            store
+                .pending_events_for_consumer("consumer-b", 10)
+                .await
+                .expect("consumer b acknowledged")
                 .is_empty()
         );
         store.pool.close().await;
@@ -2734,16 +3994,44 @@ mod tests {
             .expect("reopen acknowledged outbox");
         assert!(
             reopened
-                .pending_events(10)
+                .pending_events_for_consumer("consumer-a", 10)
                 .await
                 .expect("ack remains durable after restart")
                 .is_empty()
         );
         assert!(
-            !reopened
-                .mark_event_delivered("evt-1")
+            reopened
+                .pending_events_for_consumer("consumer-b", 10)
                 .await
-                .expect("ack replay after restart is a no-op")
+                .expect("consumer b ack remains durable")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn outbox_preserves_per_producer_insert_order_not_event_id_lexical_order() {
+        let root = tempfile::tempdir().expect("temp directory");
+        let store = ForgeStateStore::open(root.path()).await.expect("store");
+        for event_id in ["producer.event.2", "producer.event.10"] {
+            store
+                .enqueue_event(&StoredEvent {
+                    event_id: event_id.into(),
+                    contract_id: "forge.event.ordered".into(),
+                    payload: json!({"producer": "forge.kernel", "eventId": event_id}),
+                })
+                .await
+                .expect("append ordered producer event");
+        }
+        let events = store
+            .pending_events_for_consumer("ordered-consumer", 10)
+            .await
+            .expect("ordered replay");
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.event_id.as_str())
+                .collect::<Vec<_>>(),
+            ["producer.event.2", "producer.event.10"]
         );
     }
 
@@ -2822,6 +4110,9 @@ mod tests {
             .put_canonical("kernel", "checkpoint", &json!("m00"))
             .await
             .expect("write state");
+        let blob_digest = source
+            .put_blob(b"backup content addressed evidence")
+            .expect("store backup CAS object");
         let command_identity = digest("backup-unknown-command");
         assert!(
             source
@@ -2854,11 +4145,22 @@ mod tests {
             .await
             .expect("backup snapshot");
         let bytes = fs::read(backup.path().join("forge.sqlite3")).expect("backup database");
-        assert_eq!(blake3::hash(&bytes).to_hex().as_str(), backup_digest);
+        let database_digest = blake3::hash(&bytes).to_hex().to_string();
+        let manifest: BackupManifest = serde_json::from_slice(
+            &fs::read(backup.path().join("manifest.json")).expect("backup manifest"),
+        )
+        .expect("parse backup manifest");
+        assert_eq!(manifest.database_fingerprint, database_digest);
+        assert_eq!(manifest.backup_fingerprint, backup_digest);
+        assert_eq!(manifest.cas_objects.len(), 1);
         let restored_root = tempfile::tempdir().expect("restore directory");
-        let restored = ForgeStateStore::restore_from_backup(backup.path(), restored_root.path())
-            .await
-            .expect("restore verified backup");
+        let restored = ForgeStateStore::restore_from_backup(
+            backup.path(),
+            restored_root.path(),
+            &backup_digest,
+        )
+        .await
+        .expect("restore verified backup");
         restored
             .integrity_check()
             .await
@@ -2869,6 +4171,13 @@ mod tests {
                 .await
                 .expect("read restored data"),
             Some(json!("m00"))
+        );
+        assert_eq!(
+            restored
+                .get_blob(&blob_digest)
+                .expect("read restored CAS object")
+                .as_deref(),
+            Some(&b"backup content addressed evidence"[..])
         );
         let restored_intent = restored
             .begin_idempotent(&command_identity)
@@ -2893,10 +4202,33 @@ mod tests {
         let source = ForgeStateStore::open(source_root.path())
             .await
             .expect("store");
-        source.backup_to(backup_root.path()).await.expect("backup");
+        let trusted_fingerprint = source.backup_to(backup_root.path()).await.expect("backup");
         fs::write(backup_root.path().join("forge.sqlite3"), b"tampered").expect("tamper fixture");
+        let manifest_path = backup_root.path().join("manifest.json");
+        let mut manifest: BackupManifest =
+            serde_json::from_slice(&fs::read(&manifest_path).expect("read manifest"))
+                .expect("parse manifest");
+        manifest.database_fingerprint = blake3::hash(b"tampered").to_hex().to_string();
+        manifest.backup_fingerprint = backup_manifest_fingerprint(&BackupManifestUnsigned {
+            schema_version: manifest.schema_version,
+            database_schema_version: manifest.database_schema_version,
+            database_fingerprint: manifest.database_fingerprint.clone(),
+            database_hash_algorithm: manifest.database_hash_algorithm.clone(),
+            cas_objects: manifest.cas_objects.clone(),
+        })
+        .expect("attacker can recompute the adjacent unkeyed manifest hash");
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&manifest).expect("serialize modified manifest"),
+        )
+        .expect("replace manifest");
         assert!(matches!(
-            ForgeStateStore::restore_from_backup(backup_root.path(), restore_root.path()).await,
+            ForgeStateStore::restore_from_backup(
+                backup_root.path(),
+                restore_root.path(),
+                &trusted_fingerprint,
+            )
+            .await,
             Err(StateError::Integrity)
         ));
     }

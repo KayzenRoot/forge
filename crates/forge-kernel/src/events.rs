@@ -200,25 +200,46 @@ impl EventBus {
     pub async fn replay_pending(
         &self,
         store: &ForgeStateStore,
+        consumer_id: &str,
         limit: u32,
     ) -> Result<Vec<EventEnvelope>, EventError> {
-        store
-            .pending_events(limit)
-            .await?
-            .into_iter()
-            .map(|stored| {
-                serde_json::from_value(stored.payload).map_err(|_| EventError::InvalidEnvelope)
-            })
-            .collect()
+        let records = store
+            .pending_events_for_consumer(consumer_id, limit)
+            .await?;
+        let mut replayable = Vec::with_capacity(records.len());
+        for record in records {
+            let decoded = serde_json::from_slice::<Value>(&record.payload_bytes)
+                .ok()
+                .and_then(|payload| serde_json::from_value::<EventEnvelope>(payload).ok());
+            let Some(event) = decoded else {
+                store
+                    .record_event_decode_failure(&record.event_id, consumer_id)
+                    .await?;
+                continue;
+            };
+            if event.event_id != record.event_id
+                || event.contract_id != record.contract_id
+                || self.validate(&event).is_err()
+                || !self.lanes.contains_key(&event.lane)
+            {
+                store
+                    .record_event_decode_failure(&record.event_id, consumer_id)
+                    .await?;
+                continue;
+            }
+            replayable.push(event);
+        }
+        Ok(replayable)
     }
 
     pub async fn acknowledge(
         &self,
         store: &ForgeStateStore,
+        consumer_id: &str,
         event_id: &str,
     ) -> Result<bool, EventError> {
         store
-            .mark_event_delivered(event_id)
+            .acknowledge_event_for_consumer(event_id, consumer_id)
             .await
             .map_err(EventError::State)
     }
@@ -308,18 +329,82 @@ mod tests {
             .await
             .expect("durable publish");
         assert!(receipt.durable);
-        let pending = bus.replay_pending(&store, 10).await.expect("replay");
+        let pending = bus
+            .replay_pending(&store, "consumer-a", 10)
+            .await
+            .expect("replay");
         assert_eq!(pending.len(), 1);
         assert!(
-            bus.acknowledge(&store, &pending[0].event_id)
+            bus.acknowledge(&store, "consumer-a", &pending[0].event_id)
                 .await
                 .expect("acknowledge")
         );
         assert!(
-            bus.replay_pending(&store, 10)
+            bus.replay_pending(&store, "consumer-a", 10)
                 .await
                 .expect("empty replay")
                 .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn poison_event_quarantine_is_per_consumer_and_does_not_block_valid_replay() {
+        let bus = EventBus::new([(EventLane::DurableDomain, 4)]).expect("bus");
+        let root = tempfile::tempdir().expect("temp dir");
+        let store = ForgeStateStore::open(root.path()).await.expect("store");
+        store
+            .enqueue_event(&StoredEvent {
+                event_id: "event.poison".into(),
+                contract_id: "forge.event.poison".into(),
+                payload: json!({"producer": "forge.kernel", "incompatible": true}),
+            })
+            .await
+            .expect("persist poison fixture");
+        let valid = event(EventClass::DurableLocal, EventLane::DurableDomain);
+        let valid_id = valid.event_id.clone();
+        bus.publish_durable(&store, valid)
+            .await
+            .expect("valid event");
+
+        let first = bus
+            .replay_pending(&store, "consumer-a", 10)
+            .await
+            .expect("poison does not fail whole batch");
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].event_id, valid_id);
+        assert!(
+            bus.acknowledge(&store, "consumer-a", &valid_id)
+                .await
+                .expect("ack valid event")
+        );
+
+        for _ in 1..3 {
+            assert!(
+                bus.replay_pending(&store, "consumer-a", 10)
+                    .await
+                    .expect("retry poison")
+                    .is_empty()
+            );
+        }
+        assert!(
+            store
+                .pending_events_for_consumer("consumer-a", 10)
+                .await
+                .expect("quarantined poison")
+                .is_empty()
+        );
+
+        // Quarantine is isolated to the consumer that exhausted its decode budget.
+        let other_consumer = bus
+            .replay_pending(&store, "consumer-b", 10)
+            .await
+            .expect("independent replay");
+        assert_eq!(
+            other_consumer
+                .iter()
+                .map(|event| event.event_id.as_str())
+                .collect::<Vec<_>>(),
+            [valid_id.as_str()]
         );
     }
 
@@ -340,7 +425,7 @@ mod tests {
             Err(EventError::MissingLane)
         ));
         assert!(
-            bus.replay_pending(&store, 10)
+            bus.replay_pending(&store, "consumer-a", 10)
                 .await
                 .expect("replay")
                 .is_empty()
@@ -363,7 +448,14 @@ mod tests {
             .await
             .expect("idempotent event replay");
         assert_eq!(first.event_id, replay.event_id);
-        assert_eq!(store.pending_events(10).await.expect("outbox").len(), 1);
+        assert_eq!(
+            store
+                .pending_events_for_consumer("consumer-a", 10)
+                .await
+                .expect("outbox")
+                .len(),
+            1
+        );
 
         let mut secret_event = event;
         secret_event.event_id = "private-event".into();
@@ -374,7 +466,7 @@ mod tests {
         ));
         assert_eq!(
             store
-                .pending_events(10)
+                .pending_events_for_consumer("consumer-a", 10)
                 .await
                 .expect("unchanged outbox")
                 .len(),

@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import io
 import json
+import math
 import os
 import platform
 import re
@@ -47,7 +48,6 @@ COMMON_REQUIRED = {
     "contract_validate",
     "contract_compile",
     "change_cone_100_node_chain",
-    "resource_lease_and_delegation",
     "resource_usage_durable",
     "readiness_query_one_check",
     "telemetry_observation",
@@ -93,6 +93,11 @@ SEMANTICALLY_CHANGED = {
         "The candidate snapshot includes schema-v4 owner, shared-ledger, authorization, and outcome-resolution "
         "tables plus their integrity state; C02 used the earlier schema and data shape."
     ),
+    "resource_lease_and_delegation": (
+        "The candidate adds bounded monotonic TTL and expiry reclamation to lease creation and delegation. "
+        "The measured operation does not wait for expiry or exercise reclamation, so its result is a "
+        "candidate lease/delegation baseline and is not comparable to the earlier implementation."
+    ),
     "proof_obligation_compile": (
         "C02 compiled a caller-constructed assessment; the candidate derives changed paths "
         "from Git and conservatively derives obligations."
@@ -102,6 +107,11 @@ SEMANTICALLY_CHANGED = {
         "backend-authenticated receipt bound to the exact proof and change set."
     ),
 }
+
+# A fixed relative allowance is declared before each measurement. Baseline
+# outliers and run-specific dispersion never increase this limit.
+COMMON_RELATIVE_ALLOWANCE_PERCENT = 20
+MINIMUM_COMPARABLE_WORKLOADS = 10
 CANDIDATE_REQUIRED = {
     "change_cone_100_node_chain",
     "change_cone_1000_node_chain",
@@ -149,7 +159,90 @@ def git_value(root: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
-def parse_output(output: str, expected_inner_samples: int = 5) -> dict[str, object]:
+def _call_end(source: str, open_index: int) -> int:
+    depth = 0
+    index = open_index
+    in_string = False
+    escaped = False
+    in_line_comment = False
+    in_block_comment = False
+    while index < len(source):
+        if in_line_comment:
+            if source[index] == "\n":
+                in_line_comment = False
+        elif in_block_comment:
+            if source.startswith("*/", index):
+                in_block_comment = False
+                index += 1
+        elif in_string:
+            if escaped:
+                escaped = False
+            elif source[index] == "\\":
+                escaped = True
+            elif source[index] == '"':
+                in_string = False
+        elif source.startswith("//", index):
+            in_line_comment = True
+            index += 1
+        elif source.startswith("/*", index):
+            in_block_comment = True
+            index += 1
+        elif source[index] == '"':
+            in_string = True
+        elif source[index] == "(":
+            depth += 1
+        elif source[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    raise RuntimeError("unterminated benchmark call in Rust harness")
+
+
+def workload_definition_fingerprints(source_bytes: bytes) -> dict[str, str]:
+    source = source_bytes.decode("utf-8")
+    definitions: dict[str, str] = {}
+    for match in re.finditer(r"\b(measure|report_samples)\s*\(", source):
+        open_index = source.find("(", match.start())
+        end = _call_end(source, open_index)
+        call = source[match.start() : end]
+        name_expression = call[call.find("(") + 1 : call.find(",")]
+        name_match = re.search(r'"([A-Za-z0-9_{}]+)"', name_expression)
+        if not name_match:
+            continue
+        template = name_match.group(1)
+        region_start = match.start()
+        if match.group(1) == "report_samples":
+            arguments = call[call.find("(") + 1 : -1]
+            last_argument = arguments.rsplit(",", 1)[-1].strip()
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", last_argument):
+                continue
+            declaration = re.search(
+                rf"let\s+mut\s+{re.escape(last_argument)}\s*=\s*Vec::new\(\)\s*;",
+                source[: match.start()],
+            )
+            if declaration:
+                region_start = declaration.start()
+        definition = source[region_start:end].replace("\r\n", "\n").encode("utf-8")
+        digest = hashlib.sha256(definition).hexdigest()
+        if "{" in template:
+            variable = re.search(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", template)
+            if variable and variable.group(1) == "node_count":
+                for node_count in (100, 1_000, 10_000):
+                    definitions[template.replace("{node_count}", str(node_count))] = digest
+            elif variable and variable.group(1) == "owner_count":
+                for owner_count in (100, 1_000, 10_000):
+                    definitions[template.replace("{owner_count}", str(owner_count))] = digest
+        else:
+            definitions[template] = digest
+    return definitions
+
+
+def parse_output(
+    output: str,
+    workload_definitions: dict[str, str],
+    expected_inner_samples: int = 5,
+) -> dict[str, object]:
     benchmarks: dict[str, dict[str, int]] = {}
     for match in BENCHMARK_LINE.finditer(output):
         name = match.group("name")
@@ -164,6 +257,10 @@ def parse_output(output: str, expected_inner_samples: int = 5) -> dict[str, obje
         }
         if row["samples"] != expected_inner_samples:
             raise RuntimeError(f"{name}: expected five inner samples, got {row['samples']}")
+        definition_fingerprint = workload_definitions.get(name)
+        if definition_fingerprint is None:
+            raise RuntimeError(f"{name}: benchmark source definition was not found in the harness")
+        row["definition_sha256"] = definition_fingerprint
         benchmarks[name] = row
 
     cardinality: dict[str, list[dict[str, int]]] = {}
@@ -251,6 +348,16 @@ def median_mad_budget(values: list[int]) -> dict[str, int]:
     }
 
 
+def fixed_relative_budget(values: list[int]) -> dict[str, int]:
+    median = int(statistics.median(values))
+    upper = math.ceil(median * (100 + COMMON_RELATIVE_ALLOWANCE_PERCENT) / 100)
+    return {
+        "baseline_median_ns": median,
+        "relative_allowance_percent": COMMON_RELATIVE_ALLOWANCE_PERCENT,
+        "upper_budget_ns": upper,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-dir", type=Path, required=True)
@@ -276,6 +383,24 @@ def main() -> int:
     if candidate_sha == args.baseline_sha:
         parser.error("baseline and candidate must be different commits")
     verify_baseline_snapshot(candidate, baseline, args.baseline_sha)
+
+    harness_relative_path = Path("crates/forge-kernel/benches/m00_baselines.rs")
+    baseline_harness = (baseline / harness_relative_path).read_bytes()
+    candidate_harness = (candidate / harness_relative_path).read_bytes()
+    harness_sources = {
+        "baseline": {
+            "git_sha": args.baseline_sha,
+            "path": harness_relative_path.as_posix(),
+            "sha256": hashlib.sha256(baseline_harness).hexdigest(),
+        },
+        "candidate": {
+            "git_sha": candidate_sha,
+            "path": harness_relative_path.as_posix(),
+            "sha256": hashlib.sha256(candidate_harness).hexdigest(),
+        },
+    }
+    baseline_workload_definitions = workload_definition_fingerprints(baseline_harness)
+    candidate_workload_definitions = workload_definition_fingerprints(candidate_harness)
 
     target_dir = args.target_dir or candidate / "target" / "m00-performance-budget"
     target_dir = target_dir.resolve()
@@ -304,8 +429,8 @@ def main() -> int:
         else:
             candidate_output = bench_workspace(candidate, candidate_environment, no_run=False)
             baseline_output = bench_workspace(baseline, baseline_environment, no_run=False)
-        baseline_runs.append(parse_output(baseline_output))
-        candidate_runs.append(parse_output(candidate_output))
+        baseline_runs.append(parse_output(baseline_output, baseline_workload_definitions))
+        candidate_runs.append(parse_output(candidate_output, candidate_workload_definitions))
         print(f"performance_pair={run_number}/{args.runs} PASS", flush=True)
 
     baseline_names = set.intersection(
@@ -322,15 +447,50 @@ def main() -> int:
         raise RuntimeError(f"missing candidate scaling benchmarks: {missing}")
 
     comparison: dict[str, object] = {}
+    non_comparable_workloads: dict[str, object] = {}
     failures: list[str] = []
     for name in sorted(COMMON_REQUIRED):
+        baseline_metadata = [result["benchmarks"][name] for result in baseline_runs]
+        candidate_metadata = [result["benchmarks"][name] for result in candidate_runs]
+        harness_parity = {
+            "samples_match_per_pair": all(
+                baseline_row["samples"] == candidate_row["samples"]
+                for baseline_row, candidate_row in zip(baseline_metadata, candidate_metadata, strict=True)
+            ),
+            "iterations_match_per_pair": all(
+                baseline_row["iterations_per_sample"] == candidate_row["iterations_per_sample"]
+                for baseline_row, candidate_row in zip(baseline_metadata, candidate_metadata, strict=True)
+            ),
+            "workload_definitions_match": (
+                baseline_metadata[0]["definition_sha256"]
+                == candidate_metadata[0]["definition_sha256"]
+            ),
+            "baseline_workload_definition_sha256": baseline_metadata[0]["definition_sha256"],
+            "candidate_workload_definition_sha256": candidate_metadata[0]["definition_sha256"],
+            "baseline_iterations_per_sample": [row["iterations_per_sample"] for row in baseline_metadata],
+            "candidate_iterations_per_sample": [row["iterations_per_sample"] for row in candidate_metadata],
+            "baseline_samples_per_outer_run": [row["samples"] for row in baseline_metadata],
+            "candidate_samples_per_outer_run": [row["samples"] for row in candidate_metadata],
+            "source_files": harness_sources,
+        }
+        if (
+            not harness_parity["samples_match_per_pair"]
+            or not harness_parity["iterations_match_per_pair"]
+            or not harness_parity["workload_definitions_match"]
+        ):
+            non_comparable_workloads[name] = {
+                "comparison_status": "not_comparable",
+                "reason": "baseline and candidate workload definition, operation count, or inner sample count differs",
+                "harness_parity": harness_parity,
+            }
+            continue
         baseline_values = [
             result["benchmarks"][name]["median_ns_per_operation"] for result in baseline_runs
         ]
         candidate_values = [
             result["benchmarks"][name]["median_ns_per_operation"] for result in candidate_runs
         ]
-        budget = median_mad_budget(baseline_values)
+        budget = fixed_relative_budget(baseline_values)
         candidate_summary = median_mad_budget(candidate_values)
         passed = candidate_summary["median_ns"] <= budget["upper_budget_ns"]
         comparison[name] = {
@@ -338,6 +498,7 @@ def main() -> int:
             "baseline_budget": budget,
             "candidate_outer_medians_ns": candidate_values,
             "candidate_summary": candidate_summary,
+            "harness_parity": harness_parity,
             "pass": passed,
         }
         if not passed:
@@ -434,6 +595,8 @@ def main() -> int:
     failures.extend(
         name for name, result in scaling_checks.items() if not result["pass"]
     )
+    if len(comparison) < MINIMUM_COMPARABLE_WORKLOADS:
+        failures.append("insufficient_comparable_common_workloads")
 
     report = {
         "schema_version": 1,
@@ -445,6 +608,7 @@ def main() -> int:
         "candidate_worktree_clean": True,
         "outer_runs": args.runs,
         "inner_samples_per_workload": 5,
+        "benchmark_harness_sources": harness_sources,
         "environment": {
             "platform": platform.platform(),
             "processor": platform.processor(),
@@ -452,20 +616,33 @@ def main() -> int:
             "rustc_vv": toolchain,
             "cargo": cargo_version,
         },
-        "threshold_method": f"median of {args.runs} outer-run medians plus three median absolute deviations, floored at the highest observed baseline run",
+        "threshold_method": (
+            f"candidate median must be at most the paired baseline median plus the predeclared "
+            f"{COMMON_RELATIVE_ALLOWANCE_PERCENT}% relative allowance; baseline outliers and "
+            "run-specific MAD do not extend the limit"
+        ),
         "execution_order": "baseline first on odd-numbered pairs; candidate first on even-numbered pairs",
         "semantic_change_classifications": SEMANTICALLY_CHANGED,
         "common_workload_comparison": comparison,
         "candidate_only_workloads": candidate_new_workloads,
+        "non_comparable_workloads": non_comparable_workloads,
         "scaling_checks": scaling_checks,
         "verdict": "PASS" if not failures else "FAIL",
         "failures": failures,
     }
-    serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.output:
         output = args.output.resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
+        baseline_source_path = output.with_name(f"{output.stem}.baseline-{args.baseline_sha[:7]}.rs")
+        candidate_source_path = output.with_name(f"{output.stem}.candidate-{candidate_sha[:7]}.rs")
+        baseline_source_path.write_bytes(baseline_harness)
+        candidate_source_path.write_bytes(candidate_harness)
+        report["benchmark_harness_sources"]["baseline"]["evidence_file"] = baseline_source_path.name
+        report["benchmark_harness_sources"]["candidate"]["evidence_file"] = candidate_source_path.name
+        serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
         output.write_text(serialized, encoding="utf-8")
+    else:
+        serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
     print(serialized)
     return 0 if not failures else 1
 

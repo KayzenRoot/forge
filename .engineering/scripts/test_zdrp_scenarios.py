@@ -16,7 +16,7 @@ from contextlib import closing
 from pathlib import Path
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 7
 FINGERPRINT = re.compile(r"^[0-9a-f]{64}$")
 OPTIONAL_INTEGRATIONS = {
     "hive",

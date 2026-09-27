@@ -19,3 +19,8 @@ the state store rejects secret-bearing field names (including token/key/secret s
 credential-shaped values. Errors contain no rejected value. Emergency runtime records accept only
 bounded stable event codes, never arbitrary caller text. Secrets stay in secure references and are
 excluded from canonical rows, replay records, cache, and backups.
+
+The state backup manifest's BLAKE3 fingerprint is an unkeyed integrity check, not an authenticator
+by itself. `restore_from_backup` must receive the expected fingerprint from a separately trusted
+channel or protected record that an attacker cannot replace with the backup. A digest stored only
+beside the backup cannot authenticate simultaneous replacement of the database and manifest.

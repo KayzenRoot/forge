@@ -718,12 +718,16 @@ fn main() {
             .expect("backup benchmark state store");
         let backup_root = tempfile::tempdir().expect("backup root");
         let mut backup_samples = Vec::new();
+        let mut backup_fingerprint = None;
         for sample in 0..5 {
             let start = Instant::now();
-            backup_store
+            let fingerprint = backup_store
                 .backup_to(backup_root.path().join(format!("snapshot-{sample}")))
                 .await
                 .expect("state backup");
+            if sample == 0 {
+                backup_fingerprint = Some(fingerprint);
+            }
             backup_samples.push(start.elapsed());
         }
         report_samples("state_backup_snapshot", 1, backup_samples);
@@ -738,6 +742,9 @@ fn main() {
                 let restored = ForgeStateStore::restore_from_backup(
                     backup_root.path().join("snapshot-0"),
                     restore_root,
+                    backup_fingerprint
+                        .as_deref()
+                        .expect("trusted backup fingerprint"),
                 )
                 .await
                 .expect("state restore");

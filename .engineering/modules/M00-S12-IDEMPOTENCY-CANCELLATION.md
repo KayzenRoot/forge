@@ -179,3 +179,9 @@ scope, resource and run. The durable decision ID is single-use. A verified `effe
 result makes a later attempt eligible but does not grant command authority; that retry requires a
 fresh command decision. `effect_committed` waits for local finalization and `inconclusive` remains
 blocked, so neither permits an external replay.
+
+Confirmed effects use a separate terminal pending state while the local result is staged. A failed
+local CAS does not become `failed_final`, `unknown_outcome`, or `failed_retryable`. Recovery resumes
+the exact staged result/outbox/receipt transaction. A new host-signed revision can change only the
+local transition under the staged fingerprint; the durable revision ledger prevents decision-ID
+replay and retains the prior fingerprint. The effect handler is never invoked during this recovery.

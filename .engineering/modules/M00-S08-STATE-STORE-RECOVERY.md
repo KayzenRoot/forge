@@ -188,3 +188,24 @@ Ordinary persisted payloads, including evidence, command results, canonical stat
 resource-use metadata, and cache values, reject secret-bearing field names and credential-like
 strings before serialization. Rejection messages do not echo payload values. Secrets belong in
 secure references, not ordinary rows or their backups.
+
+## C03 confirmed-effect finalization correction
+
+Schema v7 adds an immutable staged envelope for a handler-confirmed effect. The envelope binds the
+replay-safe result, optional local compare-and-set transition, and durable outbox events to one
+content fingerprint. A local CAS conflict leaves the intent in
+`effect_committed_pending_finalization`; it cannot be changed to retryable by an outcome-resolution
+claim, and the handler/external effect is never rerun. A trusted host may authorize a narrowly scoped
+revision of only the local transition, bound to the exact command identity, prior envelope
+fingerprint, subject/action/scope/resource/run, replacement transition, expiry and single-use
+decision ID. Each revision is append-audited and capped at 32 per intent.
+
+Finalization applies the staged CAS, outbox rows, idempotency receipt and finalization marker in one
+SQLite transaction. Reopen can resume the staged local half. Process-crash regressions terminate
+after the CAS, each outbox insert, receipt, finalization marker, and commit; reopening proves either
+the entire transaction is absent and safely retryable locally, or the entire transaction is present
+and idempotent. These tests do not claim power-loss or device-level fsync proof.
+
+Backup manifests use an unkeyed BLAKE3 integrity fingerprint. Restore requires the expected
+fingerprint through a separately trusted channel; storing the only expected value next to the
+backup does not authenticate an attacker who can replace both the database and its manifest.
