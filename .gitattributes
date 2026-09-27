@@ -1,1 +1,5 @@
 * text=auto eol=lf
+# Preserve measured CRLF JSON bytes; documented SHA-256 values bind exact artifacts.
+.engineering/evidence/FGE-004-M00/C03-CORRECTION/performance-final-e1da083.json -text -eol whitespace=cr-at-eol
+.engineering/evidence/FGE-004-M00/C03-CORRECTION/performance-capture-e1da083.json -text -eol whitespace=cr-at-eol
+.engineering/evidence/FGE-004-M00/C03-CORRECTION/candidate-workload-budgets-e1da083.json -text -eol whitespace=cr-at-eol
