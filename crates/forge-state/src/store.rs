@@ -1470,7 +1470,14 @@ impl ForgeStateStore {
     }
 
     pub async fn enqueue_event(&self, event: &StoredEvent) -> Result<(), StateError> {
-        let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+        // The producer sequence is allocated by reading the current maximum before inserting.
+        // Acquire the SQLite writer reservation first so a concurrent heartbeat or another
+        // producer cannot invalidate this read snapshot while it is upgraded to a write.
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(StateError::Storage)?;
         Self::insert_outbox_event(&mut transaction, event).await?;
         transaction.commit().await.map_err(StateError::Storage)?;
         Ok(())
@@ -4032,6 +4039,52 @@ mod tests {
                 .map(|event| event.event_id.as_str())
                 .collect::<Vec<_>>(),
             ["producer.event.2", "producer.event.10"]
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_outbox_writers_allocate_unique_producer_sequences() {
+        let root = tempfile::tempdir().expect("temp directory");
+        let store = ForgeStateStore::open(root.path()).await.expect("store");
+        let mut writers = Vec::new();
+        for writer in 0..8 {
+            let store = store.clone();
+            writers.push(tokio::spawn(async move {
+                for sequence in 0..12 {
+                    let event_id = format!("concurrent.{writer}.{sequence}");
+                    store
+                        .enqueue_event(&StoredEvent {
+                            event_id: event_id.clone(),
+                            contract_id: "forge.event.concurrent".into(),
+                            payload: json!({
+                                "producer": "forge.concurrent",
+                                "eventId": event_id,
+                            }),
+                        })
+                        .await
+                        .expect("concurrent event insert");
+                }
+            }));
+        }
+        for writer in writers {
+            writer.await.expect("writer task");
+        }
+
+        let sequences = sqlx::query_scalar::<_, i64>(
+            "SELECT producer_sequence FROM event_outbox WHERE producer_id=?1 ORDER BY producer_sequence",
+        )
+        .bind("forge.concurrent")
+        .fetch_all(&store.pool)
+        .await
+        .expect("producer sequences");
+        assert_eq!(sequences, (1..=96).collect::<Vec<_>>());
+        assert_eq!(
+            store
+                .pending_events_for_consumer("concurrent-consumer", 100)
+                .await
+                .expect("all queued events")
+                .len(),
+            96
         );
     }
 
