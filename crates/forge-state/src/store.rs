@@ -856,7 +856,14 @@ impl ForgeStateStore {
         }
         let fingerprint = blake3::hash(&payload).to_hex().to_string();
         let staged_at_ms = unix_time_ms()?;
-        let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+        // This path reads the staged record and command intent before its first write.
+        // Reserve the writer slot up front so the heartbeat cannot invalidate the read
+        // snapshot between validation and the atomic state transition.
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(StateError::Storage)?;
         let existing =
             sqlx::query("SELECT payload, fingerprint FROM command_finalizations WHERE identity=?1")
                 .bind(identity)
