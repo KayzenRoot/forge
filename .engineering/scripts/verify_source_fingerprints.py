@@ -17,9 +17,9 @@ from typing import Any
 
 
 MANIFEST_PATH = ".engineering/evidence/FGE-004-M00/SOURCE-FINGERPRINTS.sha256"
-EXPECTED_ENTRY_COUNT = 72
+EXPECTED_ENTRY_COUNT = 73
 # SHA-256 of the admitted path sequence joined by NUL bytes, in manifest order.
-EXPECTED_PATH_SEQUENCE_SHA256 = "27695644ae7e960ce85046843dd38058efd8e198fd071c08246d5a5e4aec1f95"
+EXPECTED_PATH_SEQUENCE_SHA256 = "885942e9e940bb60ad13e7146f43155c6ac5be5c3d16dc708d3ec82801b88718"
 ROW_PATTERN = re.compile(rb"^([0-9a-fA-F]{64})  (.+)$")
 OBJECT_ID_PATTERN = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 RESERVED_WINDOWS_NAMES = {

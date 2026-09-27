@@ -916,13 +916,20 @@ impl CommandBus {
                     .await;
                     return Err(CommandError::StateConflict);
                 }
+                let retryable_contention = registration.side_effect == SideEffectClass::Pure
+                    && error.is_retryable_storage_contention();
+                let error_code = if retryable_contention {
+                    "FORGE.COMMAND.COMMIT_CONTENTION_RETRYABLE"
+                } else {
+                    "FORGE.COMMAND.COMMIT_FAILED"
+                };
                 let _ = record_failure(
                     store,
                     Some(identity),
                     registration.side_effect,
-                    "FORGE.COMMAND.COMMIT_OUTCOME_UNKNOWN",
+                    error_code,
+                    retryable_contention,
                     false,
-                    registration.side_effect != SideEffectClass::Pure,
                 )
                 .await;
                 return Err(CommandError::State(error));
@@ -1785,6 +1792,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pure_commit_contention_records_a_retryable_idempotency_failure() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let store = ForgeStateStore::open(root.path()).await.expect("store");
+        let identity = digest("retryable-pure-commit-contention");
+        assert!(
+            store
+                .begin_idempotent(&identity)
+                .await
+                .expect("begin idempotency")
+                .is_none()
+        );
+
+        record_failure(
+            &store,
+            Some(&identity),
+            SideEffectClass::Pure,
+            "FORGE.COMMAND.COMMIT_CONTENTION_RETRYABLE",
+            true,
+            false,
+        )
+        .await
+        .expect("persist retryable pure failure");
+
+        assert_eq!(
+            store
+                .begin_idempotent(&identity)
+                .await
+                .expect("read retryable failure")
+                .expect("identity record")
+                .state,
+            IdempotencyState::FailedRetryable
+        );
+        assert!(
+            store
+                .retry_idempotent(&identity)
+                .await
+                .expect("retry pure command")
+        );
+    }
+
+    #[tokio::test]
     async fn unknown_external_outcome_requires_signed_reconciliation_and_fresh_retry_authority() {
         let root = tempfile::tempdir().expect("temp dir");
         let store = ForgeStateStore::open(root.path()).await.expect("store");
@@ -2477,6 +2525,116 @@ mod tests {
                 .await
                 .expect("acknowledged outbox")
                 .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_idempotent_pure_commands_can_commit_durable_events() {
+        const COMMANDS: usize = 48;
+        let root = tempfile::tempdir().expect("temp dir");
+        let store = Arc::new(ForgeStateStore::open(root.path()).await.expect("store"));
+        let event_bus = Arc::new(
+            EventBus::new([(crate::events::EventLane::DurableDomain, 128)]).expect("event bus"),
+        );
+        let key = [0x3c; 32];
+        let signer = HostDecisionSigner::new(key);
+        let bus = Arc::new(
+            CommandBus::with_event_bus_and_host_decision_verifier(
+                COMMANDS,
+                event_bus,
+                HostDecisionVerifier::new(key),
+            )
+            .expect("command bus"),
+        );
+        let mut event_registration =
+            registration(IdempotencyMode::CallerKeyed, SideEffectClass::Pure);
+        event_registration.emits_events = true;
+        bus.register(
+            event_registration,
+            Arc::new(|_context, payload| {
+                Box::pin(async move {
+                    let index = payload
+                        .get("value")
+                        .and_then(Value::as_u64)
+                        .ok_or_else(|| CommandFailure {
+                            code: "INVALID_TEST_VALUE".into(),
+                            retryable: false,
+                            outcome_unknown: false,
+                        })?;
+                    Ok(HandlerOutput {
+                        value: payload,
+                        commit_evidence_fingerprint: Some(digest(&format!("pure-event-{index}"))),
+                        pending_events: vec![EventEnvelope {
+                            event_id: format!("pure.command.completed.{index}"),
+                            contract_id: "forge.event.command.completed".into(),
+                            contract_version: "1.0.0".into(),
+                            class: EventClass::DurableLocal,
+                            lane: crate::events::EventLane::DurableDomain,
+                            producer: "forge.pure-command".into(),
+                            privacy: crate::capabilities::PrivacyClass::Internal,
+                            causation_id: Some(format!("cmd-{index}")),
+                            correlation_id: None,
+                            execution_id: Some(format!("exec-{index}")),
+                            occurred_at_ms: 10,
+                            payload: json!({"completed": true, "index": index}),
+                        }],
+                        state_update: None,
+                    })
+                })
+            }),
+        )
+        .expect("register pure eventful command");
+        bus.seal();
+
+        let permissions: BTreeSet<String> = ["state.write".to_owned()].into_iter().collect();
+        let jobs = (0..COMMANDS)
+            .map(|index| {
+                let mut request = request();
+                request.command_id = format!("cmd-{index}");
+                request.idempotency_key = Some(format!("pure-event-{index}"));
+                request.payload = json!({"value": index});
+                let authorization = decision(
+                    &signer,
+                    &request,
+                    &format!("decision.pure-event.{index}"),
+                    permissions.clone(),
+                );
+                (request, authorization)
+            })
+            .collect::<Vec<_>>();
+        let barrier = Arc::new(tokio::sync::Barrier::new(COMMANDS));
+        let mut tasks = Vec::with_capacity(COMMANDS);
+        for (request, authorization) in jobs {
+            let store = Arc::clone(&store);
+            let bus = Arc::clone(&bus);
+            let barrier = Arc::clone(&barrier);
+            tasks.push(tokio::spawn(async move {
+                barrier.wait().await;
+                bus.execute(
+                    &store,
+                    request,
+                    &authorization,
+                    CancellationToken::new(),
+                    Deadline::after(std::time::Duration::from_secs(20)),
+                    None,
+                )
+                .await
+            }));
+        }
+        for task in tasks {
+            let outcome = task
+                .await
+                .expect("command task")
+                .expect("pure command commit");
+            assert_eq!(outcome.event_ids.len(), 1);
+        }
+        assert_eq!(
+            store
+                .pending_events_for_consumer("pure-command-contention-test", 100)
+                .await
+                .expect("committed pure events")
+                .len(),
+            COMMANDS
         );
     }
 }

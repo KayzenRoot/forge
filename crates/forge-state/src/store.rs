@@ -306,6 +306,24 @@ pub enum StateError {
     OwnerLeaseLost,
 }
 
+impl StateError {
+    /// Returns true only for transient SQLite writer contention. These failures leave a pure
+    /// command's transaction uncommitted, so its idempotency identity remains safe to retry.
+    pub fn is_retryable_storage_contention(&self) -> bool {
+        let Self::Storage(sqlx::Error::Database(database)) = self else {
+            return false;
+        };
+        database
+            .code()
+            .is_some_and(|code| is_retryable_sqlite_contention_code(&code))
+    }
+}
+
+fn is_retryable_sqlite_contention_code(code: &str) -> bool {
+    code.parse::<i32>()
+        .is_ok_and(|code| matches!(code & 0xff, 5 | 6))
+}
+
 #[derive(Clone)]
 pub struct ForgeStateStore {
     root: PathBuf,
@@ -743,7 +761,14 @@ impl ForgeStateStore {
             return Err(StateError::Integrity);
         }
 
-        let mut transaction = self.pool.begin().await.map_err(StateError::Storage)?;
+        // Outbox insertion reads the event identity and producer sequence before writing.
+        // Reserve SQLite's single writer before those reads so concurrent pure commands do not
+        // race while upgrading a WAL snapshot to a write transaction.
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(StateError::Storage)?;
         if let Some(transition) = state_transition {
             validate_key(&transition.owner)?;
             validate_key(&transition.key)?;
@@ -4093,6 +4118,88 @@ mod tests {
                 .len(),
             96
         );
+    }
+
+    #[test]
+    fn sqlite_busy_and_locked_extended_codes_are_retryable_contention() {
+        for code in ["5", "6", "517", "262"] {
+            assert!(
+                is_retryable_sqlite_contention_code(code),
+                "SQLite code {code} should be retryable"
+            );
+        }
+        for code in ["0", "3", "19", "SQLITE_BUSY", ""] {
+            assert!(
+                !is_retryable_sqlite_contention_code(code),
+                "SQLite code {code:?} should not be classified as writer contention"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_eventful_command_commits_allocate_unique_producer_sequences() {
+        const WRITES: usize = 96;
+        let root = tempfile::tempdir().expect("temporary state root");
+        let store = Arc::new(ForgeStateStore::open(root.path()).await.expect("store"));
+        let mut identities = Vec::with_capacity(WRITES);
+        for index in 0..WRITES {
+            let identity = digest(&format!("pure-eventful-command-{index}"));
+            assert!(
+                store
+                    .begin_idempotent(&identity)
+                    .await
+                    .expect("begin pure command")
+                    .is_none()
+            );
+            identities.push(identity);
+        }
+
+        let barrier = Arc::new(tokio::sync::Barrier::new(WRITES));
+        let mut writers = Vec::with_capacity(WRITES);
+        for (index, identity) in identities.iter().cloned().enumerate() {
+            let store = Arc::clone(&store);
+            let barrier = Arc::clone(&barrier);
+            writers.push(tokio::spawn(async move {
+                barrier.wait().await;
+                let event_id = format!("pure.command.event.{index}");
+                store
+                    .commit_command(
+                        &identity,
+                        &json!({"index": index}),
+                        None,
+                        &[StoredEvent {
+                            event_id: event_id.clone(),
+                            contract_id: "forge.event.pure-command.completed".into(),
+                            payload: json!({"producer": "forge.pure-command", "eventId": event_id}),
+                        }],
+                    )
+                    .await
+                    .expect("concurrent pure command commit");
+            }));
+        }
+        for writer in writers {
+            writer.await.expect("pure command task");
+        }
+
+        let sequences = sqlx::query_scalar::<_, i64>(
+            "SELECT producer_sequence FROM event_outbox WHERE producer_id=?1 ORDER BY producer_sequence",
+        )
+        .bind("forge.pure-command")
+        .fetch_all(&store.pool)
+        .await
+        .expect("producer sequences");
+        assert_eq!(sequences, (1..=WRITES as i64).collect::<Vec<_>>());
+        for identity in identities {
+            assert_eq!(
+                store
+                    .begin_idempotent(&identity)
+                    .await
+                    .expect("read committed command")
+                    .expect("receipt")
+                    .state,
+                IdempotencyState::Committed
+            );
+        }
     }
 
     #[tokio::test]

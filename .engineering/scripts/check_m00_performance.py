@@ -10,11 +10,15 @@ import json
 import math
 import os
 import platform
+import queue
 import re
 import statistics
 import subprocess
 import sys
 import tarfile
+import tempfile
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -361,6 +365,213 @@ def fixed_relative_budget(values: list[int]) -> dict[str, int]:
     }
 
 
+def candidate_reference_identity_errors(
+    reference: object,
+    *,
+    candidate_sha: str,
+    candidate_tree_sha: str,
+    baseline_sha: str,
+    outer_runs: int,
+    environment: dict[str, str],
+) -> list[str]:
+    if not isinstance(reference, dict):
+        return ["reference_not_object"]
+
+    errors: list[str] = []
+    expected = {
+        "schema_version": 1,
+        "work_order": "FGE-004-M00",
+        "reference_kind": "repeated_candidate_baseline_not_external_slo",
+        "candidate_sha": candidate_sha,
+        "candidate_tree_sha": candidate_tree_sha,
+        "baseline_sha": baseline_sha,
+        "outer_runs": outer_runs,
+        "inner_samples_per_workload": 5,
+        "relative_allowance_percent": COMMON_RELATIVE_ALLOWANCE_PERCENT,
+        "environment": environment,
+    }
+    for field, value in expected.items():
+        actual = reference.get(field)
+        if (type(value) is int and type(actual) is not int) or actual != value:
+            errors.append(f"{field}_mismatch")
+
+    workloads = reference.get("workloads")
+    if not isinstance(workloads, dict):
+        errors.append("workloads_not_object")
+    return errors
+
+
+def candidate_workload_reference_errors(
+    reference: object,
+    *,
+    current_definition_sha256: str,
+    current_iterations_per_sample: int,
+    current_inner_samples: int,
+    expected_outer_runs: int,
+) -> list[str]:
+    if not isinstance(reference, dict):
+        return ["reference_not_object"]
+
+    errors: list[str] = []
+    if reference.get("definition_sha256") != current_definition_sha256:
+        errors.append("definition_sha256_mismatch")
+    if (
+        type(reference.get("iterations_per_sample")) is not int
+        or reference.get("iterations_per_sample") != current_iterations_per_sample
+    ):
+        errors.append("iterations_per_sample_mismatch")
+    if (
+        type(reference.get("inner_samples_per_outer_run")) is not int
+        or reference.get("inner_samples_per_outer_run") != current_inner_samples
+    ):
+        errors.append("inner_samples_per_outer_run_mismatch")
+
+    outer_medians = reference.get("outer_medians_ns")
+    if (
+        not isinstance(outer_medians, list)
+        or len(outer_medians) != expected_outer_runs
+        or any(type(value) is not int or value <= 0 for value in outer_medians)
+    ):
+        errors.append("outer_medians_invalid")
+        return errors
+
+    measured_summary = median_mad_budget(outer_medians)
+    reference_median = reference.get("reference_median_ns")
+    if type(reference_median) is not int or reference_median != measured_summary["median_ns"]:
+        errors.append("reference_median_mismatch")
+    if reference.get("measurement_summary") != measured_summary:
+        errors.append("measurement_summary_mismatch")
+
+    allowance = reference.get("relative_allowance_percent")
+    if type(allowance) is not int or allowance != COMMON_RELATIVE_ALLOWANCE_PERCENT:
+        errors.append("relative_allowance_mismatch")
+    expected_upper_budget = math.ceil(
+        measured_summary["median_ns"]
+        * (100 + COMMON_RELATIVE_ALLOWANCE_PERCENT)
+        / 100
+    )
+    upper_budget = reference.get("upper_budget_ns")
+    if type(upper_budget) is not int or upper_budget != expected_upper_budget:
+        errors.append("upper_budget_mismatch")
+    return errors
+
+
+def process_resident_memory_bytes(pid: int) -> tuple[int, str]:
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        class ProcessMemoryCountersEx(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+                ("PrivateUsage", ctypes.c_size_t),
+            ]
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        psapi.GetProcessMemoryInfo.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(ProcessMemoryCountersEx),
+            wintypes.DWORD,
+        ]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+        handle = kernel32.OpenProcess(0x0400, False, pid)  # PROCESS_QUERY_INFORMATION
+        if not handle:
+            raise RuntimeError(f"cannot open idle probe process for memory sampling (winerror={ctypes.get_last_error()})")
+        try:
+            counters = ProcessMemoryCountersEx()
+            counters.cb = ctypes.sizeof(counters)
+            if not psapi.GetProcessMemoryInfo(
+                handle, ctypes.byref(counters), counters.cb
+            ):
+                raise RuntimeError(f"cannot sample idle probe working set (winerror={ctypes.get_last_error()})")
+            return int(counters.WorkingSetSize), "windows_process_working_set_bytes"
+        finally:
+            kernel32.CloseHandle(handle)
+
+    if sys.platform.startswith("linux"):
+        status = Path(f"/proc/{pid}/status").read_text(encoding="ascii")
+        for line in status.splitlines():
+            if line.startswith("VmRSS:"):
+                parts = line.split()
+                if len(parts) >= 2 and parts[1].isdigit():
+                    return int(parts[1]) * 1024, "linux_proc_vm_rss_bytes"
+                break
+        raise RuntimeError("idle probe process has no readable VmRSS value")
+
+    raise RuntimeError(f"idle memory sampling is unsupported on {sys.platform}")
+
+
+def sample_idle_memory(executable: Path, cwd: Path, env: dict[str, str]) -> dict[str, object]:
+    with tempfile.TemporaryDirectory(prefix="forge-m00-idle-memory-") as temporary:
+        state_root = Path(temporary) / "state"
+        process = subprocess.Popen(
+            [str(executable), str(state_root), "10"],
+            cwd=cwd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert process.stdout is not None
+        first_line: queue.Queue[str] = queue.Queue(maxsize=1)
+        reader = threading.Thread(
+            target=lambda: first_line.put(process.stdout.readline()), daemon=True
+        )
+        reader.start()
+        try:
+            try:
+                ready = first_line.get(timeout=30)
+            except queue.Empty as exc:
+                raise RuntimeError("idle memory probe did not report native readiness within 30 seconds") from exc
+            match = re.fullmatch(
+                r"FORGE_IDLE_READY pid=(?P<pid>\d+) schema=(?P<schema>\d+) boot_fingerprint=(?P<fingerprint>[0-9a-f]{64})\s*\n?",
+                ready,
+            )
+            if match is None or int(match.group("pid")) != process.pid:
+                raise RuntimeError(f"idle memory probe did not return a valid native-ready identity: {ready[-300:]!r}")
+            samples: list[int] = []
+            measurement = ""
+            for sample_index in range(5):
+                value, measurement = process_resident_memory_bytes(process.pid)
+                samples.append(value)
+                if sample_index != 4:
+                    time.sleep(0.5)
+            return {
+                "pid": process.pid,
+                "schema": int(match.group("schema")),
+                "boot_fingerprint": match.group("fingerprint"),
+                "samples_bytes": samples,
+                "median_bytes": int(statistics.median(samples)),
+                "peak_bytes": max(samples),
+                "measurement": measurement,
+            }
+        finally:
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            reader.join(timeout=1)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-dir", type=Path, required=True)
@@ -369,9 +580,36 @@ def main() -> int:
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--target-dir", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--candidate-budget-file", type=Path)
+    parser.add_argument(
+        "--capture-candidate-budgets",
+        type=Path,
+        help="write a repeated candidate-only reference; this is a capture, never a PASS verdict",
+    )
     args = parser.parse_args()
-    if args.runs < 5:
-        parser.error("at least five outer runs are required")
+    if args.runs < 10:
+        parser.error("at least ten paired outer runs are required to establish performance budgets")
+    if bool(args.candidate_budget_file) == bool(args.capture_candidate_budgets):
+        parser.error("provide exactly one of --candidate-budget-file or --capture-candidate-budgets")
+    candidate_budget_reference: dict[str, object] | None = None
+    candidate_budget_sha256: str | None = None
+    if args.candidate_budget_file:
+        reference_path = args.candidate_budget_file.resolve(strict=True)
+        reference_bytes = reference_path.read_bytes()
+        try:
+            candidate_budget_reference = json.loads(reference_bytes)
+        except json.JSONDecodeError as exc:
+            parser.error(f"candidate budget file is invalid JSON: {exc}")
+        candidate_budget_sha256 = hashlib.sha256(reference_bytes).hexdigest()
+        if (
+            not isinstance(candidate_budget_reference, dict)
+            or candidate_budget_reference.get("schema_version") != 1
+            or candidate_budget_reference.get("work_order") != "FGE-004-M00"
+            or candidate_budget_reference.get("relative_allowance_percent")
+            != COMMON_RELATIVE_ALLOWANCE_PERCENT
+            or not isinstance(candidate_budget_reference.get("workloads"), dict)
+        ):
+            parser.error("candidate budget file has an unsupported or unbound schema")
 
     candidate = args.candidate_dir.resolve(strict=True)
     baseline = args.baseline_dir.resolve(strict=True)
@@ -418,23 +656,68 @@ def main() -> int:
 
     toolchain = run(["rustc", "-Vv"], candidate, candidate_environment).strip()
     cargo_version = run(["cargo", "-V"], candidate, candidate_environment).strip()
+    measurement_environment = {
+        "platform": platform.platform(),
+        "processor": platform.processor(),
+        "architecture": platform.machine(),
+        "rustc_vv": toolchain,
+        "cargo": cargo_version,
+    }
     # Compile both workspaces before timing. Alternate which source tree runs
     # first on each pair to reduce temporal and warm-cache bias.
     bench_workspace(baseline, baseline_environment, no_run=True)
     bench_workspace(candidate, candidate_environment, no_run=True)
+    idle_memory_build = [
+        "cargo",
+        "build",
+        "-p",
+        "forge-cli",
+        "--example",
+        "m00_idle_memory",
+        "--release",
+        "--locked",
+        "--offline",
+    ]
+    run(idle_memory_build, baseline, baseline_environment)
+    run(idle_memory_build, candidate, candidate_environment)
+    executable_name = "m00_idle_memory.exe" if os.name == "nt" else "m00_idle_memory"
+    baseline_idle_executable = (
+        Path(baseline_environment["CARGO_TARGET_DIR"]) / "release" / "examples" / executable_name
+    )
+    candidate_idle_executable = (
+        Path(candidate_environment["CARGO_TARGET_DIR"]) / "release" / "examples" / executable_name
+    )
+    if not baseline_idle_executable.is_file() or not candidate_idle_executable.is_file():
+        raise RuntimeError("release idle memory probe binary was not produced for both source trees")
 
     baseline_runs: list[dict[str, object]] = []
     candidate_runs: list[dict[str, object]] = []
+    baseline_idle_runs: list[dict[str, object]] = []
+    candidate_idle_runs: list[dict[str, object]] = []
     for run_number in range(1, args.runs + 1):
         if run_number % 2:
             baseline_output = bench_workspace(baseline, baseline_environment, no_run=False)
             candidate_output = bench_workspace(candidate, candidate_environment, no_run=False)
+            baseline_idle = sample_idle_memory(
+                baseline_idle_executable, baseline, baseline_environment
+            )
+            candidate_idle = sample_idle_memory(
+                candidate_idle_executable, candidate, candidate_environment
+            )
         else:
             candidate_output = bench_workspace(candidate, candidate_environment, no_run=False)
             baseline_output = bench_workspace(baseline, baseline_environment, no_run=False)
+            candidate_idle = sample_idle_memory(
+                candidate_idle_executable, candidate, candidate_environment
+            )
+            baseline_idle = sample_idle_memory(
+                baseline_idle_executable, baseline, baseline_environment
+            )
         baseline_runs.append(parse_output(baseline_output, baseline_workload_definitions))
         candidate_runs.append(parse_output(candidate_output, candidate_workload_definitions))
-        print(f"performance_pair={run_number}/{args.runs} PASS", flush=True)
+        baseline_idle_runs.append(baseline_idle)
+        candidate_idle_runs.append(candidate_idle)
+        print(f"performance_pair={run_number}/{args.runs} measured", flush=True)
 
     baseline_names = set.intersection(
         *(set(run_result["benchmarks"]) for run_result in baseline_runs)
@@ -533,6 +816,154 @@ def main() -> int:
             }
         candidate_new_workloads[name] = entry
 
+    candidate_budget_names = set(non_comparable_workloads) | (candidate_names - COMMON_REQUIRED)
+    candidate_budget_capture: dict[str, object] | None = None
+    candidate_budget_gate: dict[str, object] | None = None
+    if args.capture_candidate_budgets:
+        captured_workloads: dict[str, object] = {}
+        for name in sorted(candidate_budget_names):
+            values = [
+                result["benchmarks"][name]["median_ns_per_operation"]
+                for result in candidate_runs
+            ]
+            summary = median_mad_budget(values)
+            upper_budget = math.ceil(
+                summary["median_ns"]
+                * (100 + COMMON_RELATIVE_ALLOWANCE_PERCENT)
+                / 100
+            )
+            captured_workloads[name] = {
+                "definition_sha256": candidate_runs[0]["benchmarks"][name]["definition_sha256"],
+                "iterations_per_sample": candidate_runs[0]["benchmarks"][name]["iterations_per_sample"],
+                "inner_samples_per_outer_run": candidate_runs[0]["benchmarks"][name]["samples"],
+                "outer_medians_ns": values,
+                "reference_median_ns": summary["median_ns"],
+                "relative_allowance_percent": COMMON_RELATIVE_ALLOWANCE_PERCENT,
+                "upper_budget_ns": upper_budget,
+                "measurement_summary": summary,
+            }
+        candidate_budget_capture = {
+            "schema_version": 1,
+            "work_order": "FGE-004-M00",
+            "reference_kind": "repeated_candidate_baseline_not_external_slo",
+            "candidate_sha": candidate_sha,
+            "candidate_tree_sha": git_value(candidate, "rev-parse", "HEAD^{tree}"),
+            "baseline_sha": args.baseline_sha,
+            "outer_runs": args.runs,
+            "inner_samples_per_workload": 5,
+            "relative_allowance_percent": COMMON_RELATIVE_ALLOWANCE_PERCENT,
+            "threshold_method": (
+                "Each frozen candidate-reference median receives the same predeclared fixed "
+                f"{COMMON_RELATIVE_ALLOWANCE_PERCENT}% allowance as common baseline comparisons; "
+                "outer-run variance never widens the budget."
+            ),
+            "environment": measurement_environment,
+            "workloads": captured_workloads,
+        }
+        capture_path = args.capture_candidate_budgets.resolve()
+        capture_path.parent.mkdir(parents=True, exist_ok=True)
+        capture_path.write_text(
+            json.dumps(candidate_budget_capture, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    else:
+        assert candidate_budget_reference is not None
+        reference_workloads = candidate_budget_reference["workloads"]
+        expected_names = set(candidate_budget_names)
+        recorded_names = set(reference_workloads)
+        missing_names = sorted(expected_names - recorded_names)
+        stale_names = sorted(recorded_names - expected_names)
+        for name in missing_names:
+            failures.append(f"candidate_budget_missing:{name}")
+        for name in stale_names:
+            failures.append(f"candidate_budget_stale:{name}")
+        candidate_tree_sha = git_value(candidate, "rev-parse", "HEAD^{tree}")
+        reference_identity_errors = candidate_reference_identity_errors(
+            candidate_budget_reference,
+            candidate_sha=candidate_sha,
+            candidate_tree_sha=candidate_tree_sha,
+            baseline_sha=args.baseline_sha,
+            outer_runs=args.runs,
+            environment=measurement_environment,
+        )
+        for error in reference_identity_errors:
+            failures.append(f"candidate_budget_reference_{error}")
+        reference_identity_matches = not reference_identity_errors
+        candidate_budget_gate = {
+            "schema_version": candidate_budget_reference["schema_version"],
+            "reference_kind": candidate_budget_reference.get("reference_kind"),
+            "reference_identity_matches": reference_identity_matches,
+            "reference_identity_errors": reference_identity_errors,
+            "reference_candidate_sha": candidate_budget_reference.get("candidate_sha"),
+            "reference_candidate_tree_sha": candidate_budget_reference.get("candidate_tree_sha"),
+            "candidate_sha": candidate_sha,
+            "candidate_tree_sha": candidate_tree_sha,
+            "reference_baseline_sha": candidate_budget_reference.get("baseline_sha"),
+            "baseline_sha": args.baseline_sha,
+            "reference_environment": candidate_budget_reference.get("environment"),
+            "reference_sha256": candidate_budget_sha256,
+            "relative_allowance_percent": COMMON_RELATIVE_ALLOWANCE_PERCENT,
+            "workload_results": {},
+        }
+        for name in sorted(expected_names & recorded_names):
+            reference = reference_workloads[name]
+            if not isinstance(reference, dict):
+                failures.append(f"candidate_budget_invalid:{name}")
+                continue
+            current_meta = candidate_runs[0]["benchmarks"][name]
+            current_values = [
+                result["benchmarks"][name]["median_ns_per_operation"]
+                for result in candidate_runs
+            ]
+            current_summary = median_mad_budget(current_values)
+            reference_median = reference.get("reference_median_ns")
+            allowance = reference.get("relative_allowance_percent")
+            upper_budget = reference.get("upper_budget_ns")
+            workload_reference_errors = candidate_workload_reference_errors(
+                reference,
+                current_definition_sha256=current_meta["definition_sha256"],
+                current_iterations_per_sample=current_meta["iterations_per_sample"],
+                current_inner_samples=current_meta["samples"],
+                expected_outer_runs=args.runs,
+            )
+            valid_reference = reference_identity_matches and not workload_reference_errors
+            passed = (
+                valid_reference
+                and type(upper_budget) is int
+                and current_summary["median_ns"] <= upper_budget
+            )
+            result = {
+                "comparison_status": "frozen_candidate_reference",
+                "reference_definition_sha256": reference.get("definition_sha256"),
+                "current_definition_sha256": current_meta["definition_sha256"],
+                "reference_outer_medians_ns": reference.get("outer_medians_ns"),
+                "reference_median_ns": reference_median,
+                "relative_allowance_percent": allowance,
+                "upper_budget_ns": upper_budget,
+                "candidate_outer_medians_ns": current_values,
+                "candidate_summary": current_summary,
+                "reference_valid": valid_reference,
+                "reference_errors": workload_reference_errors,
+                "pass": passed,
+            }
+            candidate_budget_gate["workload_results"][name] = result
+            if name in non_comparable_workloads:
+                non_comparable_workloads[name].update(result)
+                non_comparable_workloads[name]["acceptance_status"] = (
+                    "PASS against frozen candidate reference"
+                    if passed
+                    else "FAIL or invalid frozen candidate reference"
+                )
+            else:
+                candidate_new_workloads[name].update(result)
+                candidate_new_workloads[name]["acceptance_status"] = (
+                    "PASS against frozen candidate reference"
+                    if passed
+                    else "FAIL or invalid frozen candidate reference"
+                )
+            if not passed:
+                failures.append(f"candidate_budget:{name}")
+
     def medians(name: str) -> list[int]:
         return [
             result["benchmarks"][name]["median_ns_per_operation"] for result in candidate_runs
@@ -601,6 +1032,43 @@ def main() -> int:
     if len(comparison) < MINIMUM_COMPARABLE_WORKLOADS:
         failures.append("insufficient_comparable_common_workloads")
 
+    baseline_idle_peaks = [row["peak_bytes"] for row in baseline_idle_runs]
+    candidate_idle_peaks = [row["peak_bytes"] for row in candidate_idle_runs]
+    baseline_idle_median = int(statistics.median(baseline_idle_peaks))
+    candidate_idle_median = int(statistics.median(candidate_idle_peaks))
+    candidate_idle_mad = int(
+        statistics.median(abs(value - candidate_idle_median) for value in candidate_idle_peaks)
+    )
+    idle_memory_upper_budget = math.ceil(
+        baseline_idle_median
+        * (100 + COMMON_RELATIVE_ALLOWANCE_PERCENT)
+        / 100
+    )
+    idle_memory_pass = candidate_idle_median <= idle_memory_upper_budget
+    if len({row["measurement"] for row in baseline_idle_runs + candidate_idle_runs}) != 1:
+        failures.append("idle_memory_measurement_method_mismatch")
+        idle_memory_pass = False
+    idle_memory_comparison = {
+        "measurement": baseline_idle_runs[0]["measurement"],
+        "baseline_schema_versions": sorted({row["schema"] for row in baseline_idle_runs}),
+        "candidate_schema_versions": sorted({row["schema"] for row in candidate_idle_runs}),
+        "samples_per_process": 5,
+        "interval_ms": 500,
+        "outer_runs": args.runs,
+        "baseline_outer_peak_bytes": baseline_idle_peaks,
+        "baseline_median_peak_bytes": baseline_idle_median,
+        "relative_allowance_percent": COMMON_RELATIVE_ALLOWANCE_PERCENT,
+        "upper_budget_bytes": idle_memory_upper_budget,
+        "candidate_outer_peak_bytes": candidate_idle_peaks,
+        "candidate_median_peak_bytes": candidate_idle_median,
+        "candidate_mad_peak_bytes": candidate_idle_mad,
+        "candidate_max_peak_bytes": max(candidate_idle_peaks),
+        "pass": idle_memory_pass,
+        "scope": "same-host paired regression budget; not an external memory SLO",
+    }
+    if not idle_memory_pass:
+        failures.append("idle_memory_working_set")
+
     report = {
         "schema_version": 1,
         "work_order": "FGE-004-M00",
@@ -613,24 +1081,39 @@ def main() -> int:
         "inner_samples_per_workload": 5,
         "benchmark_harness_sources": harness_sources,
         "environment": {
-            "platform": platform.platform(),
-            "processor": platform.processor(),
-            "architecture": platform.machine(),
-            "rustc_vv": toolchain,
-            "cargo": cargo_version,
+            **measurement_environment,
+            "idle_memory_measurement": baseline_idle_runs[0]["measurement"],
         },
         "threshold_method": (
             f"candidate median must be at most the paired baseline median plus the predeclared "
             f"{COMMON_RELATIVE_ALLOWANCE_PERCENT}% relative allowance; baseline outliers and "
-            "run-specific MAD do not extend the limit"
+            "run-specific MAD do not extend the limit. Non-comparable and candidate-only "
+            "workloads are gated against a separate frozen ten-run candidate reference."
         ),
         "execution_order": "baseline first on odd-numbered pairs; candidate first on even-numbered pairs",
         "semantic_change_classifications": SEMANTICALLY_CHANGED,
         "common_workload_comparison": comparison,
         "candidate_only_workloads": candidate_new_workloads,
         "non_comparable_workloads": non_comparable_workloads,
+        "candidate_budget_reference": (
+            {
+                "status": "captured_not_validated",
+                "path": str(args.capture_candidate_budgets.resolve()),
+                "candidate_sha256": hashlib.sha256(
+                    args.capture_candidate_budgets.resolve().read_bytes()
+                ).hexdigest(),
+                "workloads": sorted(candidate_budget_names),
+            }
+            if args.capture_candidate_budgets
+            else candidate_budget_gate
+        ),
+        "idle_memory_comparison": idle_memory_comparison,
         "scaling_checks": scaling_checks,
-        "verdict": "PASS" if not failures else "FAIL",
+        "verdict": (
+            "CANDIDATE_REFERENCE_CAPTURE_ONLY"
+            if args.capture_candidate_budgets
+            else ("PASS" if not failures else "FAIL")
+        ),
         "failures": failures,
     }
     if args.output:
@@ -647,7 +1130,7 @@ def main() -> int:
     else:
         serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
     print(serialized)
-    return 0 if not failures else 1
+    return 0 if args.capture_candidate_budgets or not failures else 1
 
 
 if __name__ == "__main__":
