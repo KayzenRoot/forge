@@ -51,7 +51,7 @@ The exact semantic cache identity `f6e13cc5078ff46865061748350c7bba031350c07cb72
 The host did not permit creating a temporary Windows Firewall rule (`Access denied`), so the local `doctor` run proves native readiness with HIVE unconfigured and embeddings disabled, but does not prove blocked outbound networking. The hosted Linux/Windows firewall gates must prove that on the exact pushed head. No multi-run confidence interval, contention scaling curve or frozen performance budget is claimed. The SQLite-backed usage write is the slowest new hot path in this sample at 7,607,090 ns/op median and remains a candidate for future optimization after independent review.
 
 
-## C03 repeated exact-state comparison (2026-09-26)
+## C03 repeated exact-state comparison — historical fda8969 snapshot (2026-09-26)
 
 This section records the executable comparison added for the C03 correction. It is measured evidence, not an approved external SLO or M00 certification.
 
@@ -116,3 +116,68 @@ The first five-pair run on the same clean candidate SHA returned `FAIL` for `con
 - Five-pair initial failing report SHA-256: `b2301d693189c18af57c8646f8700b19f8726d1645c1fe0fe3bd05a167a77189` (`performance-candidate-fda8969-5runs-fail.json`). Both files are preserved in the external correction evidence directory and included in the frozen evidence package.
 - The candidate source fingerprint verifier separately passed with 68 manifest entries, zero mismatches, and the tree recorded above.
 - This comparison does not approve SLOs for new/changed workpaths, establish universal latency guarantees, or satisfy the independent performance reviewer gate.
+
+## C03 reviewer-correction performance overlay — implementation head 0ce565e (2026-09-26)
+
+This overlay is the current C03 performance record. The preceding `fda8969` comparison is retained as
+a historical snapshot; it does not describe the `0ce565e` implementation. These measurements are
+candidate evidence under the repository runner's acceptance method, not an external SLO approval.
+
+- Candidate commit/tree: `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` /
+  `27e4edd886a8cadf802db1359bef45fe265c920c`; baseline:
+  `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`. The exact Git archive baseline was verified before
+  timing. Both runs used ten paired outer medians with five inner samples and the configured threshold
+  `max(highest baseline outer median, median + 3 × MAD)`.
+- Environment: Windows 11 x86_64, AMD Ryzen 3 4300GE; Rust 1.98.1, LLVM 22.1.8, Cargo 1.98.1.
+- The initial ten-pair run at `2026-09-26T23:34:54.624579Z` returned **FAIL** only for
+  `resource_lease_and_delegation`: baseline median/budget 459/637 ns/op, candidate median 646 ns/op.
+  Report: `performance-candidate-0ce565e-10runs.json`, SHA-256
+  `b8d4cd3396c88409140f24dbc88ad0ea5690984d03234544371eca91ef693273`.
+- The preserved ten-pair rerun at `2026-09-26T23:52:32.696112Z` returned **PASS**, with all 16
+  comparable workload checks and all three scaling checks passing. Report:
+  `performance-candidate-0ce565e-10runs-rerun1.json`, SHA-256
+  `f87b3a5d72f6be92642bd191041140880980f360d935a47a26a50f8f389b08df`.
+
+### Passing rerun — comparable workload checks
+
+All values are ns/op. The budget is derived from the ten baseline outer medians using the method
+above; the candidate value is its ten-run median.
+
+| Workload | Baseline budget | Candidate median | Result |
+|---|---:|---:|---|
+| `blake3_1k` | 1,143 | 1,041 | PASS |
+| `cancellation_lineage_check` | 32 | 32 | PASS |
+| `cancellation_parent_to_child` | 913 | 818 | PASS |
+| `change_cone_100_node_chain` | 89,342 | 51,530 | PASS |
+| `contract_compile` | 15,203 | 11,848 | PASS |
+| `contract_validate` | 184 | 111 | PASS |
+| `durable_event_outbox` | 4,471,430 | 4,021,097 | PASS |
+| `readiness_query_one_check` | 2,364 | 873 | PASS |
+| `resource_lease_and_delegation` | 667 | 664 | PASS |
+| `resource_usage_durable` | 5,844,203 | 4,614,650 | PASS |
+| `runtime_start_and_shutdown` | 1,290,050 | 233,647 | PASS |
+| `semantic_cache_lookup` | 68,737 | 52,072 | PASS |
+| `state_read` | 52,900 | 44,993 | PASS |
+| `state_transaction_write` | 3,886,934 | 3,660,398 | PASS |
+| `telemetry_observation` | 102 | 76 | PASS |
+| `typed_content_fingerprint_1k` | 1,366 | 1,183 | PASS |
+
+### Scaling checks and variance interpretation
+
+All three scaling checks passed in the rerun: Change Cone per-node max/min ratio 2.210× (limit 3×),
+durable resource-usage writes across ledger-cardinality intervals 1.043× (limit 2×), and scheduler
+rotation 2.121× (limit 3×).
+
+The resource-lease rerun is a narrow pass: its candidate median is 664 ns/op against a 667 ns/op
+budget, while the baseline median is 445 ns/op. This is a 49.2% median increase associated with the
+new bounded monotonic TTL and expiry-reclamation path; the pass follows the declared observed-maximum
+threshold, not a claim that this changed operation retained its former latency. The first ten-pair
+run failed this same workload by 9 ns/op. Preserve both outcomes as measurement history; do not cite
+the rerun alone as proof of no regression. The readiness digest implementation was separately
+changed to retain the same canonical JSON digest without allocating a dynamic JSON value; its
+candidate median in the rerun is 873 ns/op versus a 2,153 ns/op baseline median.
+
+The reports are preserved in the external C03 correction evidence directory and included as distinct
+artifacts in the frozen package. The implementation-head hosted CI run and the eventual
+documentation-head CI run are different exact-state bindings. Neither performance report approves an
+external SLO or satisfies the independent performance-review verdict.

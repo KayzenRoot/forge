@@ -1,6 +1,6 @@
 # FGE-004-M00 Certification Evidence Capsule — candidate
 
-Status: NOT CERTIFIED — C03 correction candidate has exact-head CI and measured-performance checks; independent assurance and applicable final audit approval remain open. This capsule does not certify its own documentation revision.
+Status: NOT CERTIFIED — implementation candidate `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` has exact-head CI and a passing ten-pair performance rerun; the initial failing performance run is preserved. Four fresh package-bound reviews and applicable final audit approval remain open. This capsule does not certify its own documentation revision.
 
 ## Identity and execution
 
@@ -13,7 +13,7 @@ Status: NOT CERTIFIED — C03 correction candidate has exact-head CI and measure
 - The two historical failures remain in UADS history: `fail_0a0885d3ae84936c` and `fail_d24e593c9f468786`. The new plan/run preserves their provenance.
 - PR #9 records the implementation-candidate SHA and exact-head check; the current PR check rollup is authoritative for any later evidence-only revision. This capsule and the Evidence Bundle do not certify their own containing commit.
 
-## C03 correction evidence (current overlay)
+## C03 correction evidence (historical fda8969 snapshot; superseded by the current overlay at the end)
 
 - Corrected implementation candidate: `fda8969097320cdad9b8f92dffb4fddd8fc2424e`; tree: `f6c4c21a7f5e910c85c6bf5844ddb3b294679e13`. Exact-head Actions run [36270900434](https://github.com/KayzenRoot/forge/actions/runs/36270900434) passed all four configured jobs: governance, Ubuntu native runtime, Windows native runtime, and security/supply-chain. The Linux and Windows hosted outbound-network-blocked doctor steps both passed. This CI run applies to `fda8969097320cdad9b8f92dffb4fddd8fc2424e` only; a later evidence-only revision requires its own exact-head binding.
 - Source-fingerprint verification on `fda8969097320cdad9b8f92dffb4fddd8fc2424e`: PASS, SHA-1 repository object format, 68 inventory entries, zero mismatches.
@@ -21,7 +21,7 @@ Status: NOT CERTIFIED — C03 correction candidate has exact-head CI and measure
 - H1-H5 and ML1-ML7 corrections and their mapped regression evidence are tracked in [C03 correction matrix](C03-CORRECTION-MATRIX.md). The prior five High and seven consolidated Medium/Low findings are addressed in the correction candidate; this is not an independent approval.
 - Four fresh, distinct native Codex reviewer sessions must assess one frozen evidence-package digest. Their decisions are maintained as separate review evidence bound to that digest; this capsule cannot self-certify.
 
-## S01-S22 candidate coverage
+## S01-S22 candidate coverage (historical candidate snapshot; superseded where the current overlay differs)
 
 | Section | Candidate authority | Current local evidence | Status / remaining proof |
 |---|---|---|---|
@@ -87,3 +87,45 @@ Legend: `LOCAL` means named executable local evidence exists; `PARTIAL` means ev
 ## Verdict
 
 `CANDIDATE / NOT CERTIFIED`. No approval, merge or checkpoint promotion is claimed.
+
+## C03 current correction overlay — implementation head 0ce565e (2026-09-26)
+
+This is the authoritative C03 status for the implementation candidate. Earlier `fda8969` and S01-S22
+rows above are historical snapshots wherever they differ from this overlay. The implementation head
+has CI and local evidence; the later documentation-only head must bind its own exact-head CI in PR #9
+and the frozen review package. This capsule does not certify that future documentation revision.
+
+- Implementation head/tree: `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` /
+  `27e4edd886a8cadf802db1359bef45fe265c920c`; admitted base remains
+  `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
+- Exact-head [Actions run 36278984106](https://github.com/KayzenRoot/forge/actions/runs/36278984106)
+  passed all four configured jobs: governance, security/supply-chain, Ubuntu native runtime, and
+  Windows native runtime. Both hosted outbound-egress-blocked doctor checks passed. The local Windows
+  firewall setup was denied and is not represented as egress proof.
+- The raw-Git-blob source verifier passed at this head with 72 manifest entries, SHA-1 Git object
+  format, zero errors and zero mismatches. The added inventory binds build/verification inputs,
+  including `crates/forge-kernel/build.rs`; the unlisted-build-input fixture rejects an omitted path.
+- Schema v4 appends host-signed unknown-outcome resolutions and retains them through backup/restore.
+  Only an authenticated `EffectNotCommitted` decision can enable retry, and the retry requires fresh
+  command authorization. Resource leases use a bounded monotonic TTL, children inherit their parent's
+  expiry, expired reservations are reclaimed, and stale handles fail closed.
+- Secret canaries cover AWS secret-key fields and credential-shaped error codes. Durable published
+  event identifiers equal the staged outbox identifiers; `publish_committed` is no longer public.
+- Local Windows validation on this code head passed: Rust format/check/test/clippy, dependency audit
+  and policy checks, source-fingerprint fixtures, release CLI/doctor, and all six S21 ZDRP readiness
+  groups. The Rust suite reported 1 CLI, 6 contract, 84 kernel and 22 state tests, plus one doctest.
+  Doctor reported `native_ready`, SQLite integrity `ok`, schema v4, HIVE `not_configured`, and semantic
+  embeddings disabled. Local egress was not asserted.
+- The current performance rerun passed the runner's ten-pair comparison: 16/16 comparable workloads
+  and all three scaling checks. The first ten-pair run on the same code head failed only
+  `resource_lease_and_delegation`; both immutable reports and their interpretation are recorded in
+  [the performance evidence](../../../docs/PERFORMANCE-M00-CANDIDATE.md). In the passing rerun, that
+  workload's median was 664 ns/op against a 667 ns/op baseline budget, while its C02 baseline median
+  was 445 ns/op. This is a measured cost associated with the added expiry/reclamation path and a
+  narrow pass under the runner's observed-max threshold; it is not evidence of equal latency or an
+  approved external SLO.
+
+Fresh, distinct security, performance, reliability, and certification-systems reviewers still need
+to inspect one identical frozen package digest. Their actual identities and verdicts are recorded
+outside the package to avoid changing the digest recursively. The PR remains open and draft. The
+canonical checkpoint is unchanged, M00 is not promoted, and M01 has not started.

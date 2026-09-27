@@ -1,6 +1,6 @@
 # FGE-004-M00 Evidence Bundle — implementation candidate
 
-Status: CANDIDATE EVIDENCE; NOT AN APPROVAL OR CHECKPOINT PROMOTION. C03 exact-head CI and measured-performance checks passed; fresh independent assurance remains bound to the frozen package. This bundle does not certify its own documentation revision.
+Status: CANDIDATE EVIDENCE; NOT AN APPROVAL OR CHECKPOINT PROMOTION. Implementation head `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` has exact-head CI and a passing ten-pair performance rerun; the earlier failing run is retained. Four fresh package-bound reviews remain required. This bundle does not certify its own documentation revision.
 
 ## Identity and authority
 
@@ -13,7 +13,7 @@ Status: CANDIDATE EVIDENCE; NOT AN APPROVAL OR CHECKPOINT PROMOTION. C03 exact-h
 - The nine executable UADS PASS records belong to a pre-CD3 digest and do not certify CD3/CD4. `security-review` and `performance-check` remain pending, with four distinct assurance reviewer sessions missing. Historical failures `fail_0a0885d3ae84936c` and `fail_d24e593c9f468786` remain preserved. Do not treat visible role-cycling as independent review.
 - HIVE remains optional. Native Forge boot reports HIVE not configured and semantic embeddings disabled; no external model or embedding API is called.
 
-## C03 correction evidence (current overlay)
+## C03 correction evidence (historical fda8969 snapshot; superseded by the current overlay at the end)
 
 - Corrected implementation candidate: `fda8969097320cdad9b8f92dffb4fddd8fc2424e`; tree `f6c4c21a7f5e910c85c6bf5844ddb3b294679e13`; baseline `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`. PR #9 is currently open, draft, and unmerged. Exact-head Actions run [36270900434](https://github.com/KayzenRoot/forge/actions/runs/36270900434) passed all four configured jobs, including Ubuntu and Windows blocked-egress doctor checks. This run does not certify a later evidence-only commit.
 - Source fingerprints: 68 manifest entries, zero mismatches on `fda8969097320cdad9b8f92dffb4fddd8fc2424e`; the final documentation revision will be re-bound and verified before the review package is frozen.
@@ -76,3 +76,40 @@ Durable-accounting tests prove migration from schema v1 to v2, exact replay dedu
 - Linux and Windows blocked-egress doctor checks passed for implementation candidate `4d6109024d652fd0ac7454e14eeb5aaa9f5113ac` in hosted run `35890844050`; local firewall configuration was denied. Any later evidence-only commit has a separate exact-head check binding through PR #9.
 - Independent security, performance, reliability and certification decisions require a proven separate reviewer execution backend. The UADS capability snapshot is `unknown`; do not self-approve.
 - M00 remains unapproved. Keep the PR unmerged, canonical checkpoint unchanged, and M01 out of scope.
+
+## C03 current correction overlay — implementation head 0ce565e (2026-09-26)
+
+This overlay supersedes earlier C03 candidate, source-count, schema, performance, and pending-hosted-proof
+statements above. Those entries remain historical evidence for their named heads. The documentation
+commit containing this overlay must receive its own exact-head Actions result; the implementation run
+below cannot certify a later SHA.
+
+- Implementation head/tree: `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` /
+  `27e4edd886a8cadf802db1359bef45fe265c920c`; base `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
+- Exact-head [Actions run 36278984106](https://github.com/KayzenRoot/forge/actions/runs/36278984106):
+  governance, security/supply-chain, Ubuntu native runtime, and Windows native runtime all passed;
+  both hosted outbound-egress-blocked doctor checks passed.
+- Source verification passed against this implementation head: 72 raw Git blobs, SHA-1 object format,
+  zero errors/mismatches. Build and verification inputs, including `crates/forge-kernel/build.rs`,
+  are inventory-bound; a negative fixture proves an unlisted build input is rejected.
+- Corrections include schema-v4 host-signed UOR with safe retry/backup semantics, bounded monotonic
+  resource-lease expiry and reclamation, secret-safe error persistence, matching staged/published
+  durable event IDs, and a private committed-event publication path. Regression evidence is in the
+  mapped C03 matrix and exact source snapshot.
+- Local Windows checks on the implementation head passed the Rust suite (1 CLI, 6 contracts,
+  84 kernel, 22 state, and one doctest), format/clippy, source-fingerprint fixtures, dependency checks,
+  release doctor, and all six S21 readiness groups. Doctor reports `native_ready`, integrity `ok`,
+  schema v4, HIVE `not_configured`, and embeddings disabled. The local firewall rule was denied, so
+  hosted CI is the egress-block evidence.
+- Performance reports on this same code head are both preserved: initial ten-pair FAIL SHA-256
+  `b8d4cd3396c88409140f24dbc88ad0ea5690984d03234544371eca91ef693273`; ten-pair rerun PASS SHA-256
+  `f87b3a5d72f6be92642bd191041140880980f360d935a47a26a50f8f389b08df`. The passing rerun is 16/16
+  comparable workloads and 3/3 scaling checks. Resource-lease median was 664 ns/op vs 667 ns/op
+  budget (C02 median 445 ns/op); this narrow runner pass and observed overhead are disclosed, not an
+  external SLO claim.
+- Four fresh, distinct native Codex reviews (security, performance, reliability, certification-systems)
+  must assess one frozen package digest. Their verdicts are maintained in an external lock/report;
+  the old review sessions and old package digest are not reused.
+
+The package remains candidate evidence only. PR #9 stays open, draft, and unmerged; canonical checkpoint
+files remain unchanged; M00 is not promoted and M01 has not started.

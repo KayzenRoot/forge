@@ -42,7 +42,7 @@ UADS plan/run `wo_b161d2f667649b5c` / `er_586620b1f8dd4753` records a pre-CD3 di
 No merge, checkpoint promotion, M01 work, or UADS repository commit/push is authorized by this delta.
 
 
-## C03 correction evidence overlay (2026-09-26)
+## C03 correction evidence overlay — historical fda8969 snapshot (2026-09-26)
 
 This section supersedes the stale C03 candidate and performance status above; the CD3 accounting facts remain historical evidence. It does not approve this commit or certify M00.
 
@@ -51,3 +51,30 @@ This section supersedes the stale C03 candidate and performance status above; th
 - Repeated performance comparison passed 16/16 common checks and all three scaling checks at ten paired outer runs × five inner samples. Change Cone ratio 2.296× (limit 3×), scheduler ratio 2.108× (limit 3×), durable ledger write ratio 1.079× (limit 2×). A five-pair run on the same candidate first reported two failures; both reports are preserved and the expanded run passed those workloads. See the C03 subsection of `docs/PERFORMANCE-M00-CANDIDATE.md`.
 - H1-H5 and ML1-ML7 correction coverage is summarized in `C03-CORRECTION-MATRIX.md`. Executable performance acceptance is complete; an independent performance reviewer remains required. Four distinct, fresh native Codex review sessions must inspect the same immutable package digest.
 - PR #9 remains open, draft, and unmerged. Canonical checkpoint files remain unchanged; M00 is not promoted and M01 has not begun.
+
+## C03 current correction overlay — implementation head 0ce565e (2026-09-26)
+
+This overlay supersedes the candidate and performance status in the preceding C03 snapshot; CD3
+accounting facts remain historical evidence. It does not certify M00 or change checkpoint authority.
+
+- Implementation head/tree: `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` /
+  `27e4edd886a8cadf802db1359bef45fe265c920c`; baseline `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`.
+- Exact-head [Actions run 36278984106](https://github.com/KayzenRoot/forge/actions/runs/36278984106)
+  passed all four jobs, including Linux and Windows blocked-egress checks. This validates the code head
+  only; the documentation head must be separately checked.
+- The 72-entry raw-Git-blob source verifier passed with zero mismatches. Schema v4 adds durable,
+  signed unknown-outcome resolution and backup/restore preservation; the retry path requires a fresh
+  command authorization. Resource lease expiry/reclamation is bounded and monotonic, with stale handles
+  failing closed.
+- Local Rust, source-fingerprint, dependency, release-doctor, and six S21 readiness checks passed on
+  Windows. Local network blocking is not claimed because Windows firewall setup was denied.
+- Performance: the first ten-pair report on `0ce565e` failed only resource lease/delegation
+  (candidate median 646 ns/op vs 637 ns/op budget). The preserved rerun passed 16/16 comparable checks
+  and 3/3 scaling checks; lease median was 664 ns/op vs 667 ns/op budget, with 445 ns/op C02 median.
+  These reports show a narrow pass under the declared threshold and measurable expiry-path overhead;
+  they do not approve an SLO. The report hashes and full table are in `docs/PERFORMANCE-M00-CANDIDATE.md`.
+- Four fresh native reviewers must still review one frozen package digest. Their findings are not
+  represented as approval until their actual verdicts are returned and bound externally.
+
+PR #9 remains open, draft, and unmerged. `.engineering/CHECKPOINT.md` and `.engineering/CHECKPOINT.json`
+remain unchanged; M00 is not promoted and M01 has not started.

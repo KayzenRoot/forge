@@ -1,10 +1,11 @@
 # FGE-004-M00 C03 Correction Matrix
 
-Current correction candidate: `fda8969097320cdad9b8f92dffb4fddd8fc2424e` (tree `f6c4c21a7f5e910c85c6bf5844ddb3b294679e13`). Exact-head Actions run [36270900434](https://github.com/KayzenRoot/forge/actions/runs/36270900434) passed all four configured jobs. The repeated performance comparison passed all 16 comparable workloads and three scaling checks at ten paired outer runs.
+Historical C03 matrix snapshot: candidate `fda8969097320cdad9b8f92dffb4fddd8fc2424e` (tree `f6c4c21a7f5e910c85c6bf5844ddb3b294679e13`). The current implementation candidate is `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` (tree `27e4edd886a8cadf802db1359bef45fe265c920c); exact-head Actions run [36278984106](https://github.com/KayzenRoot/forge/actions/runs/36278984106) passed all four configured jobs. A ten-pair performance rerun on that implementation passed all 16 comparable workloads and three scaling checks; the earlier ten-pair failure is preserved and explained in the current overlay below.
 
-Status: correction candidate. This matrix tracks the five High findings and seven consolidated
-Medium/Low finding groups from the frozen C03 review. It does not claim audit approval, merge,
-checkpoint promotion, or M01 admission.
+Status: historical correction matrix with a current C03 correction overlay below. The older rows
+record the findings and fixes at the `fda8969` snapshot; the overlay is authoritative for later
+corrections and current binding. This matrix does not claim audit approval, merge, checkpoint
+promotion, or M01 admission.
 
 ## High findings
 
@@ -14,7 +15,7 @@ checkpoint promotion, or M01 admission.
 | H2 — ProofGraph accepted unauthenticated `Passed` nodes and rejected this repository's SHA-1 commits | Public node claims and invented session IDs could complete certification; Git IDs were assumed 64-hex. | `add` rejects `Passed`; `add_verified` requires a backend-signed receipt bound to artifact, object format, exact head, change set, dependencies, obligations, inputs, environment, backend run, and session IDs. Review sessions must differ. Git object IDs are validated against the actual SHA-1/SHA-256 repository format. | `proof::tests::backend_receipt_rejects_stale_or_mutated_proof_bindings`; `proof::tests::independent_review_proof_requires_distinct_sessions`; `proof::tests::git_assessment_derives_exact_paths_and_checks_sha1_and_sha256_references`. |
 | H3 — Canonical state, outbox, receipt, and recovery ownership were not atomic | A crash could persist CAS state without its durable event or receipt; opening another store could mark a live intent unknown. | One SQLite transaction commits CAS, all durable outbox rows, and the owner-bound command receipt. Events fan out only after commit. Instance heartbeats and leases distinguish live owners from stale intents. | `store::tests::command_state_outbox_and_receipt_commit_atomically`; `store::tests::command_commit_process_crashes_recover_atomically_at_each_write_boundary`; `store::tests::opening_a_second_store_preserves_live_intents_and_recovers_stale_owners`; concurrent-owner test. |
 | H4 — Obligations and Change Cone could omit changed paths | Callers supplied risk/obligations and missing seeds could be discarded without broadening impact. | Assessment derives changed paths from the exact Git base-to-current-HEAD diff; caller cannot construct a partial assessment. Missing/empty seeds, absent or unverified graph coverage, missing source fingerprints, and low-confidence edges broaden to conservative obligations. Risk and obligations are compiler-derived. | `proof::tests::omitted_git_change_range_broadens_to_the_full_proof_universe`; `causality::tests::missing_or_empty_seeds_fail_closed_to_the_full_graph`; high-risk and missing-source obligation tests. |
-| H5 — CI did not execute all required offline cases | Hosted doctor coverage omitted the complete six-ID ZDRP suite. | Both Linux and Windows jobs activate and verify outbound-block rules, check TCP egress probes for IPv4 and IPv6, then run the six named IDs and native diagnostics. | `.engineering/scripts/test_zdrp_scenarios.py`; `repository-validation.yml` Linux/Windows network-blocked steps. Local Windows run passed the six readiness groups; local egress is explicitly not asserted. Hosted proof remains pending the exact-head Actions run. |
+| H5 — CI did not execute all required offline cases | Hosted doctor coverage omitted the complete six-ID ZDRP suite. | Both Linux and Windows jobs activate and verify outbound-block rules, check TCP egress probes for IPv4 and IPv6, then run the six named IDs and native diagnostics. | `.engineering/scripts/test_zdrp_scenarios.py`; `repository-validation.yml` Linux/Windows network-blocked steps. Local Windows run passed the six readiness groups; local egress is explicitly not asserted. Hosted proof passed on historical `fda8969` run `36270900434`; current implementation proof is bound by run `36278984106` and the current overlay below. |
 
 ## Medium and Low finding groups
 
@@ -39,3 +40,28 @@ checkpoint promotion, or M01 admission.
   behavior.
 - This correction does not merge PR #9, modify canonical checkpoint files, promote M00, or begin
   M01. A failed hosted or independent-review gate remains a stop condition.
+
+## C03 reviewer correction overlay (2026-09-26)
+
+This overlay supersedes earlier C03 candidate, performance, and pending-hosted-proof statements.
+The current implementation candidate is `0ce565eb217ea3dd1d38e31bf16bdecf772c4175`, tree
+`27e4edd886a8cadf802db1359bef45fe265c920c`, based on `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`.
+Its exact-head Actions run [36278984106](https://github.com/KayzenRoot/forge/actions/runs/36278984106)
+passed governance, security/supply-chain, Ubuntu native runtime, and Windows native runtime; both
+hosted outbound-network-blocked doctor steps passed. This run applies to `0ce565e` only. A later
+documentation-only PR head requires its own exact-head CI binding.
+
+| Correction group | Current implementation/evidence | Status |
+|---|---|---|
+| H1-H4 and ML3 | Host-signed scoped decisions and durable single-use resolution, authenticated proof receipts bound to exact repository changes, atomic command/state/outbox/receipt persistence, conservative obligations, and non-self-asserted capability provenance remain in the implementation candidate. | Corrected; regression coverage is in the Rust suites and S21/CI evidence. |
+| H5 | Linux and Windows hosted jobs execute all six C03 ZDRP cases while outbound egress is blocked and verified. | PASS on implementation run `36278984106`; local Windows does not claim egress isolation. |
+| ML1 | Secret filtering also rejects `aws_secret_access_key` and credential-shaped idempotency error codes; durable published event IDs match their staged outbox IDs, and the unauthenticated public `publish_committed` path is crate-private. | Corrected; canary, event identity, and API-boundary tests pass. |
+| ML2 | Source inventory contains 72 raw-Git-blob fingerprints and includes build/verification inputs, including `crates/forge-kernel/build.rs`; an isolated unlisted-build-input fixture fails closed. | Verifier PASS on `0ce565e`, 72 entries, zero mismatches. |
+| H3/S08/S10/S12/S20 | Schema v4 records host-signed UOR decisions append-only and preserves them through backup/restore; only a signed `EffectNotCommitted` result enables a retry with fresh authorization. Resource leases use bounded monotonic TTL, inherited child expiry, expiry reclamation, and fail-closed stale handles. | Implemented and locally tested; provider billing integration remains unavailable and budgets stay fail-closed at zero. |
+| ML6 | The readiness workload now serializes the same canonical digest without allocating a dynamic JSON value. Ten-pair reports retain the first `0ce565e` FAIL and the rerun PASS; all three scaling checks pass. | Runner gate PASS on rerun; measured lease overhead and variance are disclosed in `docs/PERFORMANCE-M00-CANDIDATE.md`. This is not an external SLO approval. |
+| ML7 | The implementation head, source inventory, current Actions run, performance reports, and pending fresh review state are reconciled across the current evidence overlay. | Final documentation head and frozen package must be bound externally after exact-head CI. |
+
+The fresh four-review gate remains pending: security, performance, reliability, and certification-systems
+reviewers must inspect one frozen package digest. The package and reviewer results are not an approval
+of M00. PR #9 remains open and draft; the checkpoint files remain unchanged; M00 is not promoted and
+M01 has not started.

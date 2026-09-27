@@ -1,6 +1,6 @@
 # FGE-004-M00-IA1-CD1 - Source Fingerprint Verification
 
-Status: SOURCE INVENTORY CORRECTED; independent assurance remains pending. This evidence does not certify M00.
+Status: SOURCE INVENTORY CORRECTED; the current C03 implementation inventory also passes with 72 raw Git blobs. Independent assurance remains package-bound and this evidence does not certify M00.
 
 ## Context Lock
 
@@ -137,3 +137,27 @@ The harness runs each verifier call in a subprocess and parses one JSON result w
 ### C01 Final Exact-Head Binding
 
 After push, the final clean-clone harness/verifier result, final commit/tree, four-job Actions conclusion, output/ inventory comparison and PR #9 open/draft/unmerged state are recorded in the exact-head PR description. C01 stops for audit after that binding. It creates no assurance-packet digest or reviewer verdict and does not certify/promote M00 or begin M01.
+
+## C03 verifier-coverage correction overlay — implementation head 0ce565e (2026-09-26)
+
+The earlier CD1 and C01 sections above remain historical evidence for their named commits and
+68-entry inventory. This C03 overlay is the current source-fingerprint status for the implementation
+candidate; the final documentation head still needs its own exact-head verifier and hosted CI binding.
+
+- Candidate commit/tree: `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` /
+  `27e4edd886a8cadf802db1359bef45fe265c920c`; admitted base `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
+- `python -B .engineering/scripts/verify_source_fingerprints.py --commit HEAD` passed against this
+  head: SHA-1 object format, `manifest_count=72`, `errors=[]`, `mismatches=[]`, `pass=true`.
+- The 72-entry manifest includes build, verification, and workflow inputs omitted from the prior
+  inventory, including `crates/forge-kernel/build.rs`. The fixture harness now proves an unlisted
+  build input is rejected. Git-blob bytes are hashed without checkout line-ending normalization.
+- The fixture harness passed on the implementation head. The exact implementation-head Actions run
+  [36278984106](https://github.com/KayzenRoot/forge/actions/runs/36278984106) passed all four jobs.
+  Its Linux and Windows network-isolation checks prove hosted egress blocking; this local Windows
+  record makes no claim about firewall isolation.
+- The following evidence head is documentation-only with respect to the fingerprinted executable
+  inputs. Its clean-clone verifier output and exact-head Actions run are bound in the PR #9 update and
+  frozen assurance package after the final evidence commit.
+
+No canonical checkpoint file is changed by this record. The result fixes source-inventory coverage;
+it is not independent assurance, M00 certification, or checkpoint-promotion evidence.
