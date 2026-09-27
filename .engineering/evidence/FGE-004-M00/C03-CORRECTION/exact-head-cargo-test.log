@@ -1,0 +1,165 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.86s
+     Running unittests src\main.rs (target\debug\deps\forge-d5588db6150812b5.exe)
+
+running 1 test
+test tests::help_and_version_are_available_without_runtime_services ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\forge_contracts-06668739c26c4b1d.exe)
+
+running 6 tests
+test contract::tests::external_schema_references_are_rejected_before_validation ... ok
+test contract::tests::contract_ids_reject_traversal_and_untrusted_path_shapes ... ok
+test error::tests::error_fingerprint_excludes_message_noise_and_payloads ... ok
+test fingerprint::tests::content_and_semantic_fingerprints_are_domain_separated ... ok
+test fingerprint::tests::object_key_order_does_not_change_semantic_fingerprint ... ok
+test contract::tests::validates_positive_and_negative_instances_without_echoing_values ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src\lib.rs (target\debug\deps\forge_kernel-6e4ccc8d2075e344.exe)
+
+running 87 tests
+test boot::tests::conflicting_usage_replay_is_rejected_and_closes_the_governor ... ok
+test boot::tests::cloned_lease_cannot_be_mutated_while_its_usage_write_is_in_flight ... ok
+test boot::tests::native_boot_is_offline_and_does_not_require_hive_or_embeddings ... ok
+test boot::tests::persistence_error_marks_accounting_dirty_before_more_authority_can_be_granted ... ok
+test boot::tests::persisted_survival_usage_does_not_reduce_or_borrow_the_ordinary_pool ... ok
+test boot::tests::cancellation_after_durable_write_marks_dirty_and_restart_reconciles ... ok
+test capabilities::tests::callers_cannot_self_assert_provenance_or_ready_health ... ok
+test capabilities::tests::quarantine_cannot_be_silently_reversed_by_stale_evidence ... ok
+test capabilities::tests::registry_rejects_untrusted_path_like_identifiers ... ok
+test capabilities::tests::snapshots_are_immutable_and_epoch_bound ... ok
+test causality::tests::missing_or_empty_seeds_fail_closed_to_the_full_graph ... ok
+test causality::tests::semantic_propagation_invalidates_only_affected_proofs ... ok
+test boot::tests::concurrent_boots_share_the_durable_resource_budget_ceiling ... ok
+test causality::tests::unknown_changes_conservatively_expand_impact_and_cycles_terminate ... ok
+test boot::tests::live_resource_accounting_survives_restart_and_duplicate_replay_is_not_charged_twice ... ok
+test boot::tests::reduced_limits_below_persisted_usage_allow_boot_but_reject_new_leases ... ok
+test cache::tests::cache_reuse_counters_bind_to_repeated_exact_input_lookups ... ok
+test cache::tests::cache_requires_full_semantic_identity_and_respects_ttl ... ok
+test cache::tests::sensitive_cache_values_are_rejected_even_with_a_valid_semantic_key ... ok
+test boot::tests::revocation_after_durable_write_fails_closed_and_restart_reconciles ... ok
+test commands::tests::committed_or_inconclusive_reconciliation_never_replays_an_external_effect ... ok
+test commands::tests::durable_command_events_are_published_after_handler_completion_and_replayed_once ... ok
+test commands::tests::host_authorization_rejects_forgery_expiry_replay_revocation_and_scope_mismatch ... ok
+test commands::tests::pure_commit_contention_records_a_retryable_idempotency_failure ... ok
+test compatibility::tests::every_dimension_needs_evidence_and_unknown_never_becomes_compatible ... ok
+test compatibility::tests::migration_and_security_dimensions_veto_automatic_compatibility ... ok
+test compatibility::tests::semver_range_is_metadata_and_directional_proofs_are_separate ... ok
+test config::tests::failed_reload_preserves_the_published_capsule ... ok
+test config::tests::invalid_environment_override_does_not_replace_published_configuration ... ok
+test commands::tests::only_a_declared_pure_retryable_failure_can_return_to_in_flight ... ok
+test config::tests::raw_secret_bytes_and_schema_invalid_values_are_rejected ... ok
+test config::tests::precedence_is_explainable_and_secret_references_do_not_affect_semantic_fingerprint ... ok
+test determinism::tests::envelope_fingerprint_binds_semantics_and_external_effects_are_not_replayable ... ok
+test determinism::tests::raw_or_malformed_hashes_are_rejected ... ok
+test config::tests::security_critical_reload_requires_explicit_approval ... ok
+test events::tests::durable_class_cannot_bypass_the_outbox_api ... ok
+test commands::tests::permission_contract_and_durable_idempotency_precede_side_effect_execution ... ok
+test events::tests::ephemeral_lanes_are_bounded_and_lag_is_visible_to_consumers ... ok
+test commands::tests::sensitive_results_are_not_saved_as_replayable_payloads ... ok
+test commands::tests::side_effects_without_idempotency_and_missing_permissions_are_rejected ... ok
+test extensions::tests::extensions_cannot_request_network_permissions_outside_the_exact_origin_allowlist ... ok
+test extensions::tests::permissions_are_intersected_with_adapter_and_caller_authority_and_can_be_revoked ... ok
+test extensions::tests::validated_adapter_is_prepared_dormant_at_or_above_its_required_isolation_tier ... ok
+test health::tests::consecutive_failure_count_resets_after_recovery ... ok
+test health::tests::optional_hive_outage_degrades_only_the_optional_capability ... ok
+test health::tests::readiness_digest_preserves_the_canonical_json_shape ... ok
+test health::tests::stale_required_state_keeps_the_core_not_ready ... ok
+test lifecycle::tests::active_module_cannot_quiesce_without_rollback_boundary ... ok
+test lifecycle::tests::readiness_requires_contract_compatibility_and_health_evidence ... ok
+test proof::tests::backend_receipt_rejects_stale_or_mutated_proof_bindings ... ok
+test proof::tests::certification_rejects_mutated_compiled_obligations ... ok
+test proof::tests::certification_reports_missing_or_stale_proofs_as_gaps ... ok
+test proof::tests::certification_selects_the_smallest_exact_head_proof_set ... ok
+test events::tests::durable_events_are_persisted_before_fanout_and_replayable ... ok
+test proof::tests::high_risk_and_missing_change_sources_compile_fail_closed_obligations ... ok
+test proof::tests::independent_review_proof_requires_distinct_sessions ... ok
+test commands::tests::state_transition_guard_commits_once_and_recovers_confirmed_effect_after_cas_conflict ... ok
+test proof::tests::proof_snapshot_binds_exact_head_and_requires_all_dependencies_to_pass ... ok
+test proof::tests::unknown_dependencies_cannot_be_attached_to_a_proof ... ok
+test resolver::tests::hard_privacy_and_locality_constraints_are_filtered_before_scoring ... ok
+test resolver::tests::stale_or_unknown_health_abstains_instead_of_guessing ... ok
+test resources::tests::charges_are_attributed_and_budget_consumption_is_cumulative ... ok
+test resources::tests::child_budget_cannot_exceed_parent_and_returns_when_released ... ok
+test resources::tests::child_revocation_does_not_revoke_its_parent_or_sibling_lease ... ok
+test resources::tests::concurrent_resource_reservations_never_over_admit_the_root_limit ... ok
+test resources::tests::expired_lease_reclaims_capacity_while_stale_handles_fail_closed ... ok
+test resources::tests::nested_lease_keeps_its_budget_reserved_until_descendants_release ... ok
+test resources::tests::ordinary_work_cannot_borrow_survival_reserve ... ok
+test events::tests::durable_event_ids_are_stable_and_sensitive_payloads_are_rejected ... ok
+test resources::tests::revoked_parent_prevents_new_delegation ... ok
+test resources::tests::survival_leases_are_limited_to_the_protected_pool ... ok
+test runtime::tests::cancellation_and_child_deadlines_inherit_parent_bounds ... ok
+test runtime::tests::emergency_ring_is_bounded_and_rejects_untrusted_text ... ok
+test runtime::tests::runtime_rejects_unbounded_thread_settings ... ok
+test scheduler::tests::queue_capacity_and_owner_share_are_bounded ... ok
+test resources::tests::reservations_never_exceed_the_root_ceiling ... ok
+test scheduler::tests::round_robin_prevents_one_owner_from_monopolizing_a_lane ... ok
+test scheduler::tests::scheduler_rejects_invalid_capacity_configuration ... ok
+test scheduler::tests::round_robin_owner_membership_uses_constant_time_rotation ... ok
+test telemetry::tests::optional_exporter_failure_preserves_local_metrics_and_collection ... ok
+test commands::tests::unknown_external_outcome_requires_signed_reconciliation_and_fresh_retry_authority ... ok
+test telemetry::tests::registry_bounds_cardinality_and_aggregates_latency_without_labels ... ok
+test events::tests::missing_lane_does_not_persist_a_durable_event ... ok
+test events::tests::poison_event_quarantine_is_per_consumer_and_does_not_block_valid_replay ... ok
+test commands::tests::concurrent_idempotent_pure_commands_can_commit_durable_events ... ok
+test proof::tests::omitted_git_change_range_broadens_to_the_full_proof_universe ... ok
+test proof::tests::git_assessment_derives_exact_paths_and_checks_sha1_and_sha256_references ... ok
+
+test result: ok. 87 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.14s
+
+     Running unittests src\lib.rs (target\debug\deps\forge_state-185991e2a6484253.exe)
+
+running 28 tests
+test store::tests::canonical_compare_and_set_serializes_competing_transitions ... ok
+test store::tests::concurrent_distinct_usage_cannot_exceed_the_durable_pool_ceiling ... ok
+test store::tests::canonical_state_survives_while_disposable_cache_can_be_cleared ... ok
+test store::tests::command_state_outbox_and_receipt_commit_atomically ... ok
+test store::tests::concurrent_resource_usage_replays_insert_one_immutable_row ... ok
+test store::tests::concurrent_store_instances_admit_one_intent_owner_and_one_durable_effect ... ok
+test store::tests::backup_manifest_is_verified_and_database_restores_into_a_new_root ... ok
+test store::tests::confirmed_effect_finalization_is_recoverable_and_keeps_state_outbox_and_receipt_atomic ... ok
+test store::tests::content_store_refuses_a_non_directory_path_component ... ok
+test store::tests::credential_canary_never_reaches_canonical_state_receipts_outbox_cache_or_replay ... ok
+test store::tests::keys_and_identities_reject_paths_and_unbounded_values ... ok
+test store::tests::evidence_is_immutable_and_cas_checks_content_integrity ... ok
+test store::tests::durable_event_acknowledgements_are_independent_per_consumer ... ok
+test store::tests::idempotency_does_not_reexecute_an_existing_or_ambiguous_command ... ok
+test store::tests::outbox_preserves_per_producer_insert_order_not_event_id_lexical_order ... ok
+test store::tests::resource_ledger_limit_is_shared_across_store_instances ... ok
+test store::tests::process_termination_rolls_back_an_uncommitted_canonical_state_write ... ok
+test store::tests::resource_usage_is_durable_idempotent_and_attributed ... ok
+test store::tests::opening_a_second_store_preserves_live_intents_and_recovers_stale_owners ... ok
+test store::tests::resource_usage_schema_migrates_from_v1_without_recreating_canonical_state ... ok
+test store::tests::sqlite_busy_and_locked_extended_codes_are_retryable_contention ... ok
+test store::tests::restore_refuses_a_database_that_does_not_match_its_manifest ... ok
+test store::tests::reusing_an_event_id_for_different_content_is_rejected ... ok
+test store::tests::schema_v3_migrates_outcome_resolution_ledger_without_losing_intents ... ok
+test store::tests::command_commit_process_crashes_recover_atomically_at_each_write_boundary ... ok
+test store::tests::concurrent_outbox_writers_allocate_unique_producer_sequences ... ok
+test store::tests::command_finalization_process_crashes_recover_atomically_at_each_write_boundary ... ok
+test store::tests::concurrent_eventful_command_commits_allocate_unique_producer_sequences ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.94s
+
+   Doc-tests forge_contracts
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests forge_kernel
+
+running 1 test
+test crates\forge-kernel\src\capabilities.rs - capabilities::CapabilitySnapshot (line 78) - compile fail ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.15s
+
+   Doc-tests forge_state
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

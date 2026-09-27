@@ -141,3 +141,31 @@ evidence pending final evidence-head CI and the fresh four-review gate.
 The final exact-head hosted CI and four independent reviewer verdicts are bound only after packaging.
 No PR merge, checkpoint edit/promotion, M00 certification or M01 admission is authorized by this
 evidence overlay.
+
+## C03 correction evidence overlay — implementation commit e1da083 (2026-09-27)
+
+Current corrected implementation evidence is bound to commit
+`e1da083893d9335118519392c1cdb36021cbfc74`, tree
+`c5a9d5950af40e43f978d47b89186803121f3615`, on the admitted FGE-004-M00 base. The prior run
+36289138683 and round-1 frozen package remain historical evidence for 5e4fd5d only.
+
+- Reliability correction: SQLite writer reservation precedes outbox identity/sequence reads;
+  BUSY/LOCKED (including extended result codes) is retryable only for pure-command commit contention;
+  concurrent store and command regressions passed.
+- Performance correction: final report is PASS with 13/13 comparable checks, 19/19 candidate or
+  changed-definition reference gates, 3/3 scaling checks, and repeated idle-memory under its fixed
+  budget. The capture report is explicitly capture-only. Full JSON, frozen budgets and harness
+  snapshots are in `C03-CORRECTION/`; report hashes are recorded in the performance document and
+  correction matrix. The verified baseline archive and matching raw harness snapshots are included
+  with the replacement external review package.
+- Local exact-code validation: format, workspace check, clippy, all 122 Rust unit tests and one
+  compile-fail doctest, cargo-deny, cargo-audit, release build, nine performance-gate tests, 73-entry
+  raw source verification and its fixture suite passed. Release doctor and six local S21 groups
+  passed; local egress blocking was not asserted.
+- Fingerprint inventory retains 73 paths in its admitted order and path-sequence digest. The exact
+  implementation-head verifier output is included as a JSON artifact; the final evidence-head verifier
+  will be recorded externally after the evidence commit.
+
+The new evidence-head hosted check and fresh four-role independent review have not yet run. The
+replacement immutable package must bind one matching current context lock to that head, its PR #9
+check, and the same package digest supplied to all four reviewers. No prior reviewer result is reused.

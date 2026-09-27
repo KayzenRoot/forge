@@ -92,3 +92,24 @@ measurement. Only that complete report is a benchmark verdict. Fresh security, p
 reliability and certification-systems review of one identical frozen package SHA remains mandatory.
 PR #9 remains open/draft/unmerged; checkpoint files are unchanged; M00 is not promoted and M01 has
 not started.
+
+## C03 round-1 reviewer correction overlay — implementation commit e1da083 (2026-09-27)
+
+This overlay maps every actionable round-1 finding from the immutable 5e4fd5d package to the current
+implementation and regression evidence. The original review result remains historical; it is not
+reused as approval for this candidate. The new code commit/tree are
+`e1da083893d9335118519392c1cdb36021cbfc74` /
+`c5a9d5950af40e43f978d47b89186803121f3615`.
+
+| Finding | Correction | Evidence | Current boundary |
+|---|---|---|---|
+| R1-COMMIT-CONTENTION (P2) | `commit_command` reserves the SQLite writer before outbox identity/sequence reads. Primary and extended BUSY/LOCKED codes are retryable only on pure-command commit failure, using `FORGE.COMMAND.COMMIT_CONTENTION_RETRYABLE`; failures are not mislabeled as unknown external effects. | 96 concurrent eventful store commits and 48 concurrent pure eventful command commits; SQLite extended-code and retry-state regressions; full workspace suite. | Exact evidence-head hosted CI and a fresh reliability review remain pending. |
+| C1-STALE-CONTEXT-LOCK (MEDIUM) | The stale embedded lock from the old package is not copied forward. The replacement package will contain a newly generated context lock matching its exact final head/tree, PR #9, base, and exact-head Actions run; the outer ZIP/manifest digest remains in the adjacent external lock to avoid recursive hashing. | Old package remains immutable; final package assembly and lock construction use newly fetched exact-head GitHub state. | Cannot freeze the final package until the evidence commit is pushed and its exact-head run completes. |
+| P1-IDLE-MEMORY-REPEATABILITY (MEDIUM) | Repeated paired baseline/candidate Windows working-set sampling now uses ten outer pairs and five inner samples, with a predeclared baseline-median + 20% cap. | Final report: baseline median 7,667,712 B; candidate median 8,198,144 B; budget 9,201,255 B; PASS. | Local Windows process evidence only; not a portable memory SLO. |
+| P2-CANDIDATE-ONLY-BUDGET-GATE (MEDIUM) | Candidate-only and changed-definition workloads first produce capture-only references and then must pass a final exact-identity repeated gate against those frozen references. Identity and sample-shape validation is fail-closed. | 19/19 final reference gates PASS; capture verdict is not counted; nine unit regressions reject stale, malformed, or mutated references. | Independent performance review remains pending. |
+
+The exact-head source verifier passed 73/73 entries on implementation commit `e1da083`; the full
+Rust/Python local validation is recorded with its raw logs in
+`C03-CORRECTION/`. Final exact-head CI and fresh security, performance, reliability, and
+certification-systems review of one identical immutable package digest are still required. This
+overlay records correction evidence, not approval or M00 certification.

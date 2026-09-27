@@ -1,0 +1,2435 @@
+{
+  "baseline_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+  "baseline_snapshot_verified_against_git_archive": true,
+  "benchmark_harness_sources": {
+    "baseline": {
+      "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+      "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+      "path": "crates/forge-kernel/benches/m00_baselines.rs",
+      "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+    },
+    "candidate": {
+      "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+      "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+      "path": "crates/forge-kernel/benches/m00_baselines.rs",
+      "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+    }
+  },
+  "candidate_budget_reference": {
+    "candidate_sha256": "24a41218b77ecfbca757cd82e5fe7e83c5e4f50ea8c8015f9fc576c95b6cf941",
+    "path": "D:\\Projects\\hive-forge\\output\\IA1-C03-CORRECTION\\candidate-workload-budgets-e1da083.json",
+    "status": "captured_not_validated",
+    "workloads": [
+      "capability_registration",
+      "capability_resolution_one_candidate",
+      "change_cone_10000_node_chain",
+      "change_cone_1000_node_chain",
+      "change_cone_100_node_chain",
+      "cold_native_boot",
+      "command_dispatch_local_mutation",
+      "ephemeral_event_fanout",
+      "git_exact_change_assessment",
+      "proof_minimal_selection",
+      "proof_obligation_compile",
+      "resource_lease_and_delegation",
+      "resource_usage_durable",
+      "scheduler_owner_rotation_100",
+      "scheduler_owner_rotation_1000",
+      "scheduler_owner_rotation_10000",
+      "state_backup_restore",
+      "state_backup_snapshot",
+      "warm_native_boot"
+    ]
+  },
+  "candidate_only_workloads": {
+    "capability_registration": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          2464,
+          2333,
+          2254,
+          3403,
+          2326,
+          2318,
+          2398,
+          2449,
+          3193,
+          2262
+        ],
+        "baseline_summary": {
+          "mad_ns": 91,
+          "median_ns": 2365,
+          "observed_max_ns": 3403,
+          "upper_budget_ns": 3403
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": -1.84
+      },
+      "outer_medians_ns": [
+        2261,
+        2331,
+        2429,
+        2273,
+        2372,
+        2340,
+        2313,
+        2265,
+        2257,
+        2419
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 53,
+        "median_ns": 2322,
+        "observed_max_ns": 2429,
+        "upper_budget_ns": 2481
+      },
+      "reason": "C02 registered caller-asserted ConformancePassed/Ready values; the correction only permits public Declared/Unknown registration and records verified runtime evidence through a trusted path."
+    },
+    "capability_resolution_one_candidate": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          1653,
+          1684,
+          1884,
+          1769,
+          1667,
+          1669,
+          1727,
+          1665,
+          1695,
+          1783
+        ],
+        "baseline_summary": {
+          "mad_ns": 30,
+          "median_ns": 1689,
+          "observed_max_ns": 1884,
+          "upper_budget_ns": 1884
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 1.33
+      },
+      "outer_medians_ns": [
+        1714,
+        1688,
+        1829,
+        1885,
+        1684,
+        1733,
+        1692,
+        1727,
+        1681,
+        1710
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 22,
+        "median_ns": 1712,
+        "observed_max_ns": 1885,
+        "upper_budget_ns": 1885
+      },
+      "reason": "C02 resolved a caller-asserted ConformancePassed/Ready candidate; the corrected public fixture is Declared/Unknown because callers can no longer assert provenance."
+    },
+    "change_cone_10000_node_chain": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "candidate_only",
+      "outer_medians_ns": [
+        10777285,
+        10510955,
+        10595500,
+        11445665,
+        10477145,
+        11200440,
+        11479860,
+        10629430,
+        10577360,
+        10446615
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 150070,
+        "median_ns": 10612465,
+        "observed_max_ns": 11479860,
+        "upper_budget_ns": 11479860
+      },
+      "reason": "first measured in this correction"
+    },
+    "change_cone_1000_node_chain": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "candidate_only",
+      "outer_medians_ns": [
+        824544,
+        729665,
+        692269,
+        868662,
+        698687,
+        776923,
+        727420,
+        675500,
+        687059,
+        679563
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 29742,
+        "median_ns": 713053,
+        "observed_max_ns": 868662,
+        "upper_budget_ns": 868662
+      },
+      "reason": "first measured in this correction"
+    },
+    "cold_native_boot": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          51292885,
+          46976200,
+          50792465,
+          47870845,
+          45840315,
+          44363805,
+          48513225,
+          48926220,
+          49380935,
+          47830610
+        ],
+        "baseline_summary": {
+          "mad_ns": 1202367,
+          "median_ns": 48192035,
+          "observed_max_ns": 51292885,
+          "upper_budget_ns": 51799136
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 60.93
+      },
+      "outer_medians_ns": [
+        79110850,
+        79299820,
+        77279145,
+        78245030,
+        76382105,
+        77830140,
+        83126965,
+        77231230,
+        74506655,
+        77167235
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 931462,
+        "median_ns": 77554642,
+        "observed_max_ns": 83126965,
+        "upper_budget_ns": 83126965
+      },
+      "reason": "The candidate includes schema-v4 shared-ledger and command-outcome integrity, trusted capability evidence, and expanded optional-service diagnostics absent from C02."
+    },
+    "command_dispatch_local_mutation": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          7676421,
+          7522843,
+          7269606,
+          7258204,
+          7377973,
+          7141302,
+          7469147,
+          7733611,
+          7528840,
+          7254547
+        ],
+        "baseline_summary": {
+          "mad_ns": 159655,
+          "median_ns": 7423560,
+          "observed_max_ns": 7733611,
+          "upper_budget_ns": 7902525
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 109.15
+      },
+      "outer_medians_ns": [
+        15650364,
+        15357508,
+        15360729,
+        15598813,
+        15999412,
+        15222774,
+        15688404,
+        15081991,
+        15454358,
+        15873371
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 167466,
+        "median_ns": 15526585,
+        "observed_max_ns": 15999412,
+        "upper_budget_ns": 16028983
+      },
+      "reason": "The candidate verifies and durably consumes a host-signed scoped decision, then commits state, outbox, and command receipt atomically; C02 did not perform these checks."
+    },
+    "ephemeral_event_fanout": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          812,
+          827,
+          859,
+          1060,
+          851,
+          837,
+          1056,
+          1060,
+          1159,
+          1054
+        ],
+        "baseline_summary": {
+          "mad_ns": 104,
+          "median_ns": 956,
+          "observed_max_ns": 1159,
+          "upper_budget_ns": 1268
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 100.37
+      },
+      "outer_medians_ns": [
+        1923,
+        1910,
+        1888,
+        2086,
+        1881,
+        1947,
+        2179,
+        1889,
+        1896,
+        1960
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 29,
+        "median_ns": 1916,
+        "observed_max_ns": 2179,
+        "upper_budget_ns": 2179
+      },
+      "reason": "The candidate validates every event payload with the bounded secret filter before fanout; C02 did not perform this validation."
+    },
+    "git_exact_change_assessment": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "candidate_only",
+      "outer_medians_ns": [
+        398585150,
+        362589000,
+        358207100,
+        408287200,
+        365149100,
+        424421800,
+        404836250,
+        361166150,
+        361603650,
+        409291650
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 21835050,
+        "median_ns": 381867125,
+        "observed_max_ns": 424421800,
+        "upper_budget_ns": 447372275
+      },
+      "reason": "first measured in this correction"
+    },
+    "proof_minimal_selection": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          1457,
+          1417,
+          1506,
+          1412,
+          1421,
+          1439,
+          1425,
+          1418,
+          1577,
+          1410
+        ],
+        "baseline_summary": {
+          "mad_ns": 12,
+          "median_ns": 1423,
+          "observed_max_ns": 1577,
+          "upper_budget_ns": 1577
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 542.66
+      },
+      "outer_medians_ns": [
+        9120,
+        8951,
+        9214,
+        9213,
+        9120,
+        9242,
+        9187,
+        9096,
+        9070,
+        9170
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 58,
+        "median_ns": 9145,
+        "observed_max_ns": 9242,
+        "upper_budget_ns": 9319
+      },
+      "reason": "C02 selected caller-asserted unsigned Passed nodes; the candidate verifies a backend-authenticated receipt bound to the exact proof and change set."
+    },
+    "proof_obligation_compile": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          1114,
+          1183,
+          1116,
+          1111,
+          1111,
+          1123,
+          1145,
+          1132,
+          1520,
+          1120
+        ],
+        "baseline_summary": {
+          "mad_ns": 10,
+          "median_ns": 1121,
+          "observed_max_ns": 1520,
+          "upper_budget_ns": 1520
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 1481.54
+      },
+      "outer_medians_ns": [
+        17812,
+        17662,
+        17619,
+        18032,
+        17268,
+        18877,
+        18791,
+        17459,
+        17291,
+        18718
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 370,
+        "median_ns": 17737,
+        "observed_max_ns": 18877,
+        "upper_budget_ns": 18877
+      },
+      "reason": "C02 compiled a caller-constructed assessment; the candidate derives changed paths from Git and conservatively derives obligations."
+    },
+    "resource_lease_and_delegation": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          435,
+          471,
+          447,
+          443,
+          441,
+          453,
+          456,
+          473,
+          499,
+          445
+        ],
+        "baseline_summary": {
+          "mad_ns": 8,
+          "median_ns": 450,
+          "observed_max_ns": 499,
+          "upper_budget_ns": 499
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 42.0
+      },
+      "outer_medians_ns": [
+        639,
+        636,
+        639,
+        640,
+        636,
+        643,
+        640,
+        640,
+        639,
+        639
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 1,
+        "median_ns": 639,
+        "observed_max_ns": 643,
+        "upper_budget_ns": 643
+      },
+      "reason": "The candidate adds bounded monotonic TTL and expiry reclamation to lease creation and delegation. The measured operation does not wait for expiry or exercise reclamation, so its result is a candidate lease/delegation baseline and is not comparable to the earlier implementation."
+    },
+    "scheduler_owner_rotation_100": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "candidate_only",
+      "outer_medians_ns": [
+        136,
+        144,
+        142,
+        152,
+        136,
+        195,
+        166,
+        173,
+        143,
+        156
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 10,
+        "median_ns": 148,
+        "observed_max_ns": 195,
+        "upper_budget_ns": 195
+      },
+      "reason": "first measured in this correction"
+    },
+    "scheduler_owner_rotation_1000": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "candidate_only",
+      "outer_medians_ns": [
+        187,
+        196,
+        184,
+        234,
+        182,
+        279,
+        222,
+        187,
+        200,
+        195
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 9,
+        "median_ns": 195,
+        "observed_max_ns": 279,
+        "upper_budget_ns": 279
+      },
+      "reason": "first measured in this correction"
+    },
+    "scheduler_owner_rotation_10000": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "candidate_only",
+      "outer_medians_ns": [
+        294,
+        291,
+        274,
+        314,
+        269,
+        297,
+        300,
+        271,
+        309,
+        278
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 15,
+        "median_ns": 292,
+        "observed_max_ns": 314,
+        "upper_budget_ns": 337
+      },
+      "reason": "first measured in this correction"
+    },
+    "state_backup_restore": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          38804975,
+          34770700,
+          31469100,
+          33818925,
+          38300250,
+          36053250,
+          40007750,
+          38674500,
+          34777750,
+          32281275
+        ],
+        "baseline_summary": {
+          "mad_ns": 3009487,
+          "median_ns": 35415500,
+          "observed_max_ns": 40007750,
+          "upper_budget_ns": 44443961
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 75.47
+      },
+      "outer_medians_ns": [
+        62399525,
+        64768000,
+        61762750,
+        63625800,
+        59918175,
+        64996550,
+        61891025,
+        67849875,
+        61108450,
+        60928525
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 1348637,
+        "median_ns": 62145275,
+        "observed_max_ns": 67849875,
+        "upper_budget_ns": 67849875
+      },
+      "reason": "The candidate restore path validates bounded secret-safe payloads and schema-v4 shared-ledger and outcome-resolution state; C02 restored the earlier state format and invariants."
+    },
+    "state_backup_snapshot": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          40595100,
+          37192700,
+          37280100,
+          39134300,
+          40336700,
+          36598300,
+          46162000,
+          37362000,
+          36148500,
+          42208500
+        ],
+        "baseline_summary": {
+          "mad_ns": 1869200,
+          "median_ns": 38248150,
+          "observed_max_ns": 46162000,
+          "upper_budget_ns": 46162000
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 41.25
+      },
+      "outer_medians_ns": [
+        58307500,
+        55654100,
+        49389700,
+        55346100,
+        51303200,
+        49528000,
+        51343000,
+        52703900,
+        58653200,
+        61370000
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 3502150,
+        "median_ns": 54025000,
+        "observed_max_ns": 61370000,
+        "upper_budget_ns": 64531450
+      },
+      "reason": "The candidate snapshot includes schema-v4 owner, shared-ledger, authorization, and outcome-resolution tables plus their integrity state; C02 used the earlier schema and data shape."
+    },
+    "warm_native_boot": {
+      "acceptance_status": "candidate baseline recorded; no external SLO approval implied",
+      "comparison_status": "not_comparable",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          25751655,
+          25326025,
+          23874785,
+          24487220,
+          21312175,
+          22033545,
+          23792505,
+          24730805,
+          25857960,
+          24203250
+        ],
+        "baseline_summary": {
+          "mad_ns": 766760,
+          "median_ns": 24345235,
+          "observed_max_ns": 25857960,
+          "upper_budget_ns": 26645515
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 18.2
+      },
+      "outer_medians_ns": [
+        29372765,
+        26647765,
+        27296020,
+        32460000,
+        30094235,
+        28180435,
+        30899095,
+        25679915,
+        26080360,
+        30534220
+      ],
+      "proposed_candidate_budget": {
+        "mad_ns": 1940057,
+        "median_ns": 28776600,
+        "observed_max_ns": 32460000,
+        "upper_budget_ns": 34596771
+      },
+      "reason": "The candidate includes schema-v4 shared-ledger and command-outcome integrity, owner heartbeat/recovery, trusted capability evidence, and expanded optional-service diagnostics absent from C02."
+    }
+  },
+  "candidate_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+  "candidate_worktree_clean": true,
+  "common_workload_comparison": {
+    "blake3_1k": {
+      "baseline_budget": {
+        "baseline_median_ns": 1037,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 1245
+      },
+      "baseline_outer_medians_ns": [
+        1034,
+        1037,
+        1095,
+        1048,
+        1035,
+        1038,
+        1034,
+        1042,
+        1035,
+        1041
+      ],
+      "candidate_outer_medians_ns": [
+        1040,
+        1055,
+        1076,
+        1042,
+        1052,
+        1045,
+        1036,
+        1037,
+        1033,
+        1034
+      ],
+      "candidate_summary": {
+        "mad_ns": 6,
+        "median_ns": 1041,
+        "observed_max_ns": 1076,
+        "upper_budget_ns": 1076
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "f597c41962978598e94cb4b7a3e92c5de2063fbad019f9a5180ec0abaa49eddf",
+        "candidate_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "f597c41962978598e94cb4b7a3e92c5de2063fbad019f9a5180ec0abaa49eddf",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "cancellation_lineage_check": {
+      "baseline_budget": {
+        "baseline_median_ns": 32,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 39
+      },
+      "baseline_outer_medians_ns": [
+        32,
+        32,
+        33,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        32
+      ],
+      "candidate_outer_medians_ns": [
+        31,
+        31,
+        32,
+        32,
+        32,
+        32,
+        32,
+        31,
+        32,
+        32
+      ],
+      "candidate_summary": {
+        "mad_ns": 0,
+        "median_ns": 32,
+        "observed_max_ns": 32,
+        "upper_budget_ns": 32
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "af4c3aaaa99ad3a864588b67309fa5dc3591ee2a14c6373a9e7989d394264a53",
+        "candidate_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "af4c3aaaa99ad3a864588b67309fa5dc3591ee2a14c6373a9e7989d394264a53",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "cancellation_parent_to_child": {
+      "baseline_budget": {
+        "baseline_median_ns": 801,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 962
+      },
+      "baseline_outer_medians_ns": [
+        800,
+        796,
+        827,
+        801,
+        789,
+        812,
+        799,
+        806,
+        816,
+        801
+      ],
+      "candidate_outer_medians_ns": [
+        829,
+        794,
+        799,
+        812,
+        802,
+        793,
+        823,
+        797,
+        791,
+        818
+      ],
+      "candidate_summary": {
+        "mad_ns": 8,
+        "median_ns": 800,
+        "observed_max_ns": 829,
+        "upper_budget_ns": 829
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "4138192c39a7c688b34372f869c3f24a542d41cb31d5e4b5ed0fd8f8ac75c3d2",
+        "candidate_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "4138192c39a7c688b34372f869c3f24a542d41cb31d5e4b5ed0fd8f8ac75c3d2",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "contract_compile": {
+      "baseline_budget": {
+        "baseline_median_ns": 11789,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 14147
+      },
+      "baseline_outer_medians_ns": [
+        11366,
+        12486,
+        12577,
+        11778,
+        11552,
+        11658,
+        11803,
+        11704,
+        11800,
+        12393
+      ],
+      "candidate_outer_medians_ns": [
+        12086,
+        12266,
+        11757,
+        12070,
+        11401,
+        12321,
+        11679,
+        11640,
+        11928,
+        11437
+      ],
+      "candidate_summary": {
+        "mad_ns": 236,
+        "median_ns": 11842,
+        "observed_max_ns": 12321,
+        "upper_budget_ns": 12550
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "503a1468c602b587c36121f8dcca2a524baec590995c0447c759b892d0625e5b",
+        "candidate_iterations_per_sample": [
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "503a1468c602b587c36121f8dcca2a524baec590995c0447c759b892d0625e5b",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "contract_validate": {
+      "baseline_budget": {
+        "baseline_median_ns": 117,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 141
+      },
+      "baseline_outer_medians_ns": [
+        119,
+        116,
+        131,
+        105,
+        121,
+        117,
+        118,
+        120,
+        108,
+        108
+      ],
+      "candidate_outer_medians_ns": [
+        122,
+        117,
+        114,
+        116,
+        115,
+        117,
+        118,
+        117,
+        123,
+        116
+      ],
+      "candidate_summary": {
+        "mad_ns": 1,
+        "median_ns": 117,
+        "observed_max_ns": 123,
+        "upper_budget_ns": 123
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "88d7b05beebe501ac5db30e8f033eb918e5e2f80813af484745ce10174ace866",
+        "candidate_iterations_per_sample": [
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "88d7b05beebe501ac5db30e8f033eb918e5e2f80813af484745ce10174ace866",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "durable_event_outbox": {
+      "baseline_budget": {
+        "baseline_median_ns": 4012540,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 4815048
+      },
+      "baseline_outer_medians_ns": [
+        3894300,
+        4103417,
+        4258371,
+        3974829,
+        3859797,
+        3856903,
+        4128204,
+        4050251,
+        3959548,
+        4169636
+      ],
+      "candidate_outer_medians_ns": [
+        4242006,
+        4227320,
+        4195041,
+        4209633,
+        4351972,
+        4131486,
+        4275752,
+        4232063,
+        4122921,
+        4372034
+      ],
+      "candidate_summary": {
+        "mad_ns": 40355,
+        "median_ns": 4229691,
+        "observed_max_ns": 4372034,
+        "upper_budget_ns": 4372034
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "d31b0dd90af09709cdb9e5981be47a90764c709eca1053fd66da77d17d93cd64",
+        "candidate_iterations_per_sample": [
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "d31b0dd90af09709cdb9e5981be47a90764c709eca1053fd66da77d17d93cd64",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "readiness_query_one_check": {
+      "baseline_budget": {
+        "baseline_median_ns": 2168,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 2602
+      },
+      "baseline_outer_medians_ns": [
+        2070,
+        2099,
+        2215,
+        2169,
+        2163,
+        2407,
+        2207,
+        2168,
+        2257,
+        2111
+      ],
+      "candidate_outer_medians_ns": [
+        821,
+        816,
+        813,
+        822,
+        814,
+        828,
+        818,
+        812,
+        810,
+        820
+      ],
+      "candidate_summary": {
+        "mad_ns": 4,
+        "median_ns": 817,
+        "observed_max_ns": 828,
+        "upper_budget_ns": 829
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "0f1039ea537060fdb322339156e7d952b48d9d7a104119ba1ddc6eb8c0acd770",
+        "candidate_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "0f1039ea537060fdb322339156e7d952b48d9d7a104119ba1ddc6eb8c0acd770",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "runtime_start_and_shutdown": {
+      "baseline_budget": {
+        "baseline_median_ns": 228345,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 274014
+      },
+      "baseline_outer_medians_ns": [
+        200335,
+        223975,
+        230565,
+        230660,
+        185070,
+        222130,
+        265975,
+        266665,
+        258555,
+        226125
+      ],
+      "candidate_outer_medians_ns": [
+        224400,
+        189950,
+        180950,
+        242335,
+        186300,
+        266315,
+        238930,
+        191170,
+        190955,
+        230885
+      ],
+      "candidate_summary": {
+        "mad_ns": 22292,
+        "median_ns": 207785,
+        "observed_max_ns": 266315,
+        "upper_budget_ns": 274661
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "b100e8c810a775d14857dc84acccce2212007054bdf9f39f1d7935e89f582cf5",
+        "candidate_iterations_per_sample": [
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "b100e8c810a775d14857dc84acccce2212007054bdf9f39f1d7935e89f582cf5",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "semantic_cache_lookup": {
+      "baseline_budget": {
+        "baseline_median_ns": 53123,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 63748
+      },
+      "baseline_outer_medians_ns": [
+        57170,
+        49862,
+        50910,
+        54062,
+        38139,
+        35048,
+        55122,
+        53438,
+        52809,
+        54055
+      ],
+      "candidate_outer_medians_ns": [
+        51879,
+        34473,
+        47801,
+        60383,
+        55868,
+        56645,
+        55160,
+        34035,
+        36671,
+        51474
+      ],
+      "candidate_summary": {
+        "mad_ns": 4580,
+        "median_ns": 51676,
+        "observed_max_ns": 60383,
+        "upper_budget_ns": 65416
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "f65ce81c61d785e02b00ac1cca685adfbeb874336ab6233ad530da64ccb7b786",
+        "candidate_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "f65ce81c61d785e02b00ac1cca685adfbeb874336ab6233ad530da64ccb7b786",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "state_read": {
+      "baseline_budget": {
+        "baseline_median_ns": 44088,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 52906
+      },
+      "baseline_outer_medians_ns": [
+        40754,
+        71928,
+        42247,
+        43553,
+        28996,
+        29322,
+        46062,
+        45395,
+        44623,
+        45530
+      ],
+      "candidate_outer_medians_ns": [
+        41446,
+        34561,
+        34563,
+        56763,
+        47355,
+        46124,
+        44416,
+        28844,
+        29313,
+        57334
+      ],
+      "candidate_summary": {
+        "mad_ns": 8369,
+        "median_ns": 42931,
+        "observed_max_ns": 57334,
+        "upper_budget_ns": 68038
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "0f809da0bcac72efd75955004e524a1199924bc931cca288a2cb5dc430933e0f",
+        "candidate_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "0f809da0bcac72efd75955004e524a1199924bc931cca288a2cb5dc430933e0f",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "state_transaction_write": {
+      "baseline_budget": {
+        "baseline_median_ns": 3611702,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 4334043
+      },
+      "baseline_outer_medians_ns": [
+        3561339,
+        3700631,
+        3632802,
+        3712621,
+        3588772,
+        3627259,
+        3519001,
+        3588877,
+        3596145,
+        3817853
+      ],
+      "candidate_outer_medians_ns": [
+        3641653,
+        3406759,
+        3527903,
+        3665512,
+        3638356,
+        3673858,
+        3705680,
+        3450465,
+        3555887,
+        3580238
+      ],
+      "candidate_summary": {
+        "mad_ns": 60388,
+        "median_ns": 3609297,
+        "observed_max_ns": 3705680,
+        "upper_budget_ns": 3790461
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "e7038114650743a567ccc123ce918a084b80dc2c854e03bc2fb42cc4e61969d0",
+        "candidate_iterations_per_sample": [
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "e7038114650743a567ccc123ce918a084b80dc2c854e03bc2fb42cc4e61969d0",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "telemetry_observation": {
+      "baseline_budget": {
+        "baseline_median_ns": 76,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 92
+      },
+      "baseline_outer_medians_ns": [
+        76,
+        77,
+        80,
+        75,
+        79,
+        74,
+        76,
+        95,
+        77,
+        76
+      ],
+      "candidate_outer_medians_ns": [
+        71,
+        72,
+        72,
+        72,
+        71,
+        72,
+        78,
+        72,
+        71,
+        75
+      ],
+      "candidate_summary": {
+        "mad_ns": 0,
+        "median_ns": 72,
+        "observed_max_ns": 78,
+        "upper_budget_ns": 78
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "d59ca397e11d4e57ddccf9d6775cd0b55f8b37b368dd44c57aefbf37f269fe63",
+        "candidate_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "d59ca397e11d4e57ddccf9d6775cd0b55f8b37b368dd44c57aefbf37f269fe63",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "typed_content_fingerprint_1k": {
+      "baseline_budget": {
+        "baseline_median_ns": 1179,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 1415
+      },
+      "baseline_outer_medians_ns": [
+        1163,
+        1176,
+        1244,
+        1173,
+        1162,
+        1203,
+        1334,
+        1183,
+        1209,
+        1171
+      ],
+      "candidate_outer_medians_ns": [
+        1172,
+        1189,
+        1174,
+        1196,
+        1163,
+        1170,
+        1172,
+        1185,
+        1196,
+        1161
+      ],
+      "candidate_summary": {
+        "mad_ns": 11,
+        "median_ns": 1173,
+        "observed_max_ns": 1196,
+        "upper_budget_ns": 1206
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "96984fa4e905199419e3e5f7bbb58f29fc3f13332f5fdfe87657e4f7ae31af78",
+        "candidate_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "96984fa4e905199419e3e5f7bbb58f29fc3f13332f5fdfe87657e4f7ae31af78",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    }
+  },
+  "environment": {
+    "architecture": "AMD64",
+    "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "idle_memory_measurement": "windows_process_working_set_bytes",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 23 Model 96 Stepping 1, AuthenticAMD",
+    "rustc_vv": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.1\nLLVM version: 22.1.8"
+  },
+  "execution_order": "baseline first on odd-numbered pairs; candidate first on even-numbered pairs",
+  "failures": [],
+  "idle_memory_comparison": {
+    "baseline_median_peak_bytes": 7667712,
+    "baseline_outer_peak_bytes": [
+      9101312,
+      7659520,
+      7659520,
+      7667712,
+      7659520,
+      7680000,
+      7680000,
+      7659520,
+      7667712,
+      7680000
+    ],
+    "baseline_schema_versions": [
+      2
+    ],
+    "candidate_mad_peak_bytes": 18432,
+    "candidate_max_peak_bytes": 10018816,
+    "candidate_median_peak_bytes": 8192000,
+    "candidate_outer_peak_bytes": [
+      10018816,
+      8183808,
+      8257536,
+      8175616,
+      8183808,
+      8212480,
+      8163328,
+      8310784,
+      8200192,
+      8175616
+    ],
+    "candidate_schema_versions": [
+      7
+    ],
+    "interval_ms": 500,
+    "measurement": "windows_process_working_set_bytes",
+    "outer_runs": 10,
+    "pass": true,
+    "relative_allowance_percent": 20,
+    "samples_per_process": 5,
+    "scope": "same-host paired regression budget; not an external memory SLO",
+    "upper_budget_bytes": 9201255
+  },
+  "inner_samples_per_workload": 5,
+  "measurement_time_utc": "2026-09-27T04:31:17.096769+00:00",
+  "non_comparable_workloads": {
+    "change_cone_100_node_chain": {
+      "comparison_status": "not_comparable",
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "1c3b993481d42178d76476d065f82d9a55661690ac5a3b9bff1790cd7e47a4a4",
+        "candidate_iterations_per_sample": [
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+        "iterations_match_per_pair": false,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": false
+      },
+      "reason": "baseline and candidate workload definition, operation count, or inner sample count differs"
+    },
+    "resource_usage_durable": {
+      "comparison_status": "not_comparable",
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "fe8dc9fc2d0e5e191f57afb5965b83bcfdd5ad6683aff9c858355dd53becadde",
+        "candidate_iterations_per_sample": [
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "79e6f96ca64002a3d01fc085b111cd3c280272c00c83b652ee102f4fa0f47f5e",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-capture-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-capture-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": false
+      },
+      "reason": "baseline and candidate workload definition, operation count, or inner sample count differs"
+    }
+  },
+  "outer_runs": 10,
+  "scaling_checks": {
+    "change_cone_ns_per_node": {
+      "limit": 3.0,
+      "max_to_min_ratio": 2.1717482503171937,
+      "pass": true,
+      "values": {
+        "100": 488.66,
+        "1000": 713.053,
+        "10000": 1061.2465
+      }
+    },
+    "resource_usage_ns_per_write_by_ledger_cardinality": {
+      "intervals": [
+        {
+          "cardinality_end": 200,
+          "cardinality_start": 0,
+          "outer_medians_ns_per_operation": [
+            4602155,
+            4221087,
+            4034548,
+            4849317,
+            4774512,
+            4937562,
+            4613412,
+            4196693,
+            4408748,
+            4672695
+          ],
+          "summary": {
+            "mad_ns": 220284,
+            "median_ns": 4607783,
+            "observed_max_ns": 4937562,
+            "upper_budget_ns": 5268635
+          }
+        },
+        {
+          "cardinality_end": 400,
+          "cardinality_start": 200,
+          "outer_medians_ns_per_operation": [
+            4683835,
+            4570332,
+            4304763,
+            5046185,
+            5080892,
+            4918210,
+            4660032,
+            4775267,
+            4476036,
+            4737582
+          ],
+          "summary": {
+            "mad_ns": 173939,
+            "median_ns": 4710708,
+            "observed_max_ns": 5080892,
+            "upper_budget_ns": 5232525
+          }
+        },
+        {
+          "cardinality_end": 600,
+          "cardinality_start": 400,
+          "outer_medians_ns_per_operation": [
+            4680716,
+            4702802,
+            3967430,
+            4550528,
+            4747682,
+            4184000,
+            4262491,
+            4331662,
+            4365429,
+            4500025
+          ],
+          "summary": {
+            "mad_ns": 209112,
+            "median_ns": 4432727,
+            "observed_max_ns": 4747682,
+            "upper_budget_ns": 5060063
+          }
+        },
+        {
+          "cardinality_end": 800,
+          "cardinality_start": 600,
+          "outer_medians_ns_per_operation": [
+            4581687,
+            4636996,
+            4157200,
+            4174333,
+            4582901,
+            4795662,
+            4509953,
+            3989877,
+            4075855,
+            4603653
+          ],
+          "summary": {
+            "mad_ns": 170509,
+            "median_ns": 4545820,
+            "observed_max_ns": 4795662,
+            "upper_budget_ns": 5057347
+          }
+        },
+        {
+          "cardinality_end": 1000,
+          "cardinality_start": 800,
+          "outer_medians_ns_per_operation": [
+            4810574,
+            4679368,
+            4883178,
+            4435373,
+            4564655,
+            4296557,
+            4223802,
+            4613703,
+            5151540,
+            4743874
+          ],
+          "summary": {
+            "mad_ns": 187600,
+            "median_ns": 4646535,
+            "observed_max_ns": 5151540,
+            "upper_budget_ns": 5209335
+          }
+        }
+      ],
+      "limit": 2.0,
+      "max_to_min_ratio": 1.0627110580010906,
+      "pass": true
+    },
+    "scheduler_rotation_ns_per_operation": {
+      "limit": 3.0,
+      "max_to_min_ratio": 1.972972972972973,
+      "pass": true,
+      "values": {
+        "100": 148,
+        "1000": 195,
+        "10000": 292
+      }
+    }
+  },
+  "schema_version": 1,
+  "semantic_change_classifications": {
+    "capability_registration": "C02 registered caller-asserted ConformancePassed/Ready values; the correction only permits public Declared/Unknown registration and records verified runtime evidence through a trusted path.",
+    "capability_resolution_one_candidate": "C02 resolved a caller-asserted ConformancePassed/Ready candidate; the corrected public fixture is Declared/Unknown because callers can no longer assert provenance.",
+    "cold_native_boot": "The candidate includes schema-v4 shared-ledger and command-outcome integrity, trusted capability evidence, and expanded optional-service diagnostics absent from C02.",
+    "command_dispatch_local_mutation": "The candidate verifies and durably consumes a host-signed scoped decision, then commits state, outbox, and command receipt atomically; C02 did not perform these checks.",
+    "ephemeral_event_fanout": "The candidate validates every event payload with the bounded secret filter before fanout; C02 did not perform this validation.",
+    "proof_minimal_selection": "C02 selected caller-asserted unsigned Passed nodes; the candidate verifies a backend-authenticated receipt bound to the exact proof and change set.",
+    "proof_obligation_compile": "C02 compiled a caller-constructed assessment; the candidate derives changed paths from Git and conservatively derives obligations.",
+    "resource_lease_and_delegation": "The candidate adds bounded monotonic TTL and expiry reclamation to lease creation and delegation. The measured operation does not wait for expiry or exercise reclamation, so its result is a candidate lease/delegation baseline and is not comparable to the earlier implementation.",
+    "state_backup_restore": "The candidate restore path validates bounded secret-safe payloads and schema-v4 shared-ledger and outcome-resolution state; C02 restored the earlier state format and invariants.",
+    "state_backup_snapshot": "The candidate snapshot includes schema-v4 owner, shared-ledger, authorization, and outcome-resolution tables plus their integrity state; C02 used the earlier schema and data shape.",
+    "warm_native_boot": "The candidate includes schema-v4 shared-ledger and command-outcome integrity, owner heartbeat/recovery, trusted capability evidence, and expanded optional-service diagnostics absent from C02."
+  },
+  "threshold_method": "candidate median must be at most the paired baseline median plus the predeclared 20% relative allowance; baseline outliers and run-specific MAD do not extend the limit. Non-comparable and candidate-only workloads are gated against a separate frozen ten-run candidate reference.",
+  "verdict": "CANDIDATE_REFERENCE_CAPTURE_ONLY",
+  "work_order": "FGE-004-M00"
+}

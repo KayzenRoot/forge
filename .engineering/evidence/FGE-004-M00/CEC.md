@@ -173,3 +173,37 @@ The final evidence-head hosted CI result and fresh four-session review results m
 external frozen-package lock. Reviewers must all receive the same package SHA-256. Until their
 verdicts are bound, the result remains `CANDIDATE / NOT CERTIFIED`. PR #9 remains open and draft;
 canonical checkpoint files remain unchanged; M00 is not promoted and M01 has not started.
+
+## C03 reviewer correction execution overlay — implementation commit e1da083 (2026-09-27)
+
+This overlay supersedes earlier implementation and performance status where they differ. It records
+executor evidence only. It is not independent approval, M00 certification, merge authorization, or
+checkpoint promotion.
+
+- Corrected code commit/tree: `e1da083893d9335118519392c1cdb36021cbfc74` /
+  `c5a9d5950af40e43f978d47b89186803121f3615`, based on admitted base
+  `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
+- R1 pure-command SQLite contention: writer reservation precedes outbox reads; only transient BUSY/
+  LOCKED commit contention for pure commands is retryable and has a stable code. Regressions cover
+  96 concurrent eventful store commits, 48 concurrent pure eventful commands, extended-code
+  classification, and retryable mapping. The external-effect unknown-outcome boundary is unchanged.
+- P1/P2 performance correction: ten paired outer runs x five inner samples; 13/13 comparable workloads,
+  19/19 candidate/non-comparable reference gates, and 3/3 scaling checks PASS. Idle working set passed
+  its paired fixed budget (7,667,712 B baseline median; 8,198,144 B candidate median; 9,201,255 B
+  budget). Candidate references are bound to exact source, environment, workload and sample shape.
+  These are local candidate measurements, not external SLOs.
+- Exact source verifier on implementation commit: PASS, SHA-1, 73 paths, zero errors/mismatches,
+  tree `c5a9d5950af40e43f978d47b89186803121f3615`. The inventory path-sequence SHA-256 remains
+  `885942e9e940bb60ad13e7146f43155c6ac5be5c3d16dc708d3ec82801b88718`.
+- Local exact-code validation passed: format; workspace check; Clippy; 1 CLI, 6 contract, 87 kernel,
+  and 28 state tests plus one compile-fail doctest; cargo-deny policy categories; cargo-audit; release
+  build; nine performance-reference tests; fingerprint verifier and fixture suite. Release doctor
+  reported native_ready, offline_ready, schema 7, and SQLite integrity ok. All six local S21 groups
+  passed; local egress was skipped and is not represented as blocked-network proof.
+- The prior exact-head CI run 36289138683 and round-1 review apply only to old commit 5e4fd5d and its
+  immutable package. The evidence/documentation commit following this overlay needs its own exact-head
+  PR #9 CI result. Four fresh native independent reviewers must then examine one identical frozen
+  package digest. Their current verdicts and actual session identities remain pending.
+
+The canonical checkpoint is unchanged. PR #9 remains open and draft; this execution does not certify
+M00, merge the PR, promote a checkpoint, or start M01.

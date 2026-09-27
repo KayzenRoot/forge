@@ -181,3 +181,18 @@ case included. The updated test file remains covered by the 72-path raw-Git-blob
 committed verifier result and exact source SHA/tree binding are recorded in the external C03 lock and
 the current PR #9 description. This adds negative test coverage only; no checkpoint or source authority
 changed.
+
+## C03 correction implementation verification — e1da083 (2026-09-27)
+
+The raw-Git-blob verifier passed on implementation commit
+`e1da083893d9335118519392c1cdb36021cbfc74`: SHA-1 object format, tree
+`c5a9d5950af40e43f978d47b89186803121f3615`, 73 manifest entries, zero errors and zero mismatches.
+The path-sequence SHA-256 remains
+`885942e9e940bb60ad13e7146f43155c6ac5be5c3d16dc708d3ec82801b88718`. The JSON output is
+`C03-CORRECTION/source-fingerprint-verification-e1da083.json`, SHA-256
+`880b9497a48b626980abe1fa6608ca1f7cb62afed8926b6badcf44b4847a0356`.
+
+After these documentary/evidence overlays are committed, the verifier must run again against the exact
+evidence commit, with its raw Git output retained in the external replacement package and lock. The
+73-path sequence remains fixed; evidence and work-order paths remain excluded by verifier policy.
+This implementation result is not a verification claim for the later evidence commit.

@@ -37,3 +37,25 @@ The SQLite database has a monotonic `PRAGMA user_version`. Schema version 1 is a
 The command consistency test injects a conflicting outbox identity after the state CAS and proves rollback leaves canonical state and receipt unchanged. Process interruption tests terminate a writer with an open SQLite transaction and verify rollback after reopen. The candidate's exact commit boundary is one SQLite transaction; post-commit outbox publication is recoverable and idempotent. Platform power-loss behavior at the storage device/fsync layer is not established by these process tests.
 
 For C03, a crash-recovery intent stays `in_flight` while its owner instance heartbeat and 60-second lease are live. Only an absent/stale owner or expired lease becomes `unknown_outcome`. Opening a second live store preserves the intent; an unknown external effect is never retried without reconciliation. CAS state, outbox events, and idempotency receipt commit atomically.
+
+## C03 SQLite contention correction overlay — implementation commit e1da083 (2026-09-27)
+
+For pure local commands, `commit_command` now reserves SQLite's writer with `BEGIN IMMEDIATE` before
+reading outbox identity or per-producer sequence state. This prevents a deferred WAL read snapshot
+from failing while being upgraded to a writer under concurrent eventful command commits.
+
+SQLite `BUSY` and `LOCKED` errors, including extended result codes (classified by the primary
+low-byte code), are treated as transient commit contention only for a pure command. If this contention
+occurs, the durable intent is `FailedRetryable` with stable code
+`FORGE.COMMAND.COMMIT_CONTENTION_RETRYABLE`. Other pure-command commit failures are no longer
+misclassified as an unknown external effect. This does not authorize replay of an external handler:
+the correction applies only to commands whose effects are local and whose failed transaction rolled
+back.
+
+The transaction preserves the existing atomic boundary across canonical state, event outbox, and
+receipt. A failed transaction rolls back those writes together; it does not leave a partial state,
+sequence, or receipt. Regression coverage classifies synthetic primary and extended SQLite codes,
+executes 96 concurrent eventful store commits and 48 concurrent pure eventful command commits, and
+checks unique producer sequences, receipts, and stable retryable error mapping. The exact implementation
+head's complete workspace suite passed. The evidence-head CI and independent reliability review remain
+pending.

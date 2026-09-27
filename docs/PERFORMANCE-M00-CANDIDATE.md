@@ -250,3 +250,100 @@ contention in durable outbox and staged command-finalization writes. Those write
 SQLite writer before read/modify/write, and a regression verifies 96 concurrent outbox inserts receive
 unique per-producer sequences. Only the completed `f03da4a` ten-pair report above is a performance
 verdict; the interrupted attempts are not counted as failed workload comparisons.
+
+## C03 correction performance overlay — implementation commit e1da083 (2026-09-27)
+
+This overlay supersedes earlier C03 performance figures for the corrected implementation. It records local
+Windows candidate evidence only. It is not an external SLO, hosted egress proof, independent approval, or
+M00 certification.
+
+- Candidate commit/tree: `e1da083893d9335118519392c1cdb36021cbfc74` /
+  `c5a9d5950af40e43f978d47b89186803121f3615`. Baseline:
+  `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`, independently matched to its raw Git archive
+  (`baseline-2f95efd4.tar`, SHA-256 `ef5f8cfa2e7a3f9cf4929d26a75281acc160a059d2b0f0afaffada730a3b7dcb)).
+- Environment: Windows 11 build 26200 x86_64; AMD Ryzen 3 4300GE; Rust/Cargo 1.98.1,
+  LLVM 22.1.8.
+- Method: ten paired outer runs, five inner samples per workload; baseline and candidate order alternated
+  by pair. Common comparable workload acceptance is fixed at baseline median plus 20%. Across the 13
+  comparable workload definitions the largest baseline median-relative MAD was 16.91%; the 20% allowance
+  rounds above that observed dispersion and cannot expand because of candidate outliers. Candidate-only
+  and changed-definition references are separately captured and gated against an exact frozen reference
+  bound to candidate commit/tree, baseline, environment, workload definition, and sample shape.
+- Final verdict: **PASS — 13/13 comparable workload checks, 19/19 candidate/non-comparable reference
+  gates, and 3/3 scaling checks**. Two names that appear on both code revisions are explicitly
+  `not_comparable` because their workload definition or iteration count changed. The other 17 references
+  are candidate-only; none is an approved external latency budget.
+- Exact artifact hashes: final gate report `performance-final-e1da083.json`,
+  SHA-256 `92cff3738fd17116eab29287aa82fad012f76a163aaaa90062779437d6210e59`;
+  candidate reference set `candidate-workload-budgets-e1da083.json`,
+  SHA-256 `24a41218b77ecfbca757cd82e5fe7e83c5e4f50ea8c8015f9fc576c95b6cf941`;
+  capture-only report `performance-capture-e1da083.json`,
+  SHA-256 `96d9fcb1f3d83848a4cf515e8e354fc42f74c4374a8bae45cba0a9294071288c`.
+  The capture report verdict is `CANDIDATE_REFERENCE_CAPTURE_ONLY`; it is not counted as a gate pass.
+  Both exact benchmark harness snapshots are retained with SHA-256
+  `0a0c3b53effb4cabbc00503cfd25b27e13c1adab380ba85c4245557265683` (baseline) and
+  `0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7` (candidate).
+
+### Comparable workload checks
+
+Values are nanoseconds per operation. Each candidate median is compared to the fixed baseline median
+plus 20% budget.
+
+| Workload | Baseline median | Fixed budget | Candidate median | Result |
+|---|---:|---:|---:|---|
+| `blake3_1k` | 1,043 | 1,252 | 1,037 | PASS |
+| `cancellation_lineage_check` | 32 | 39 | 31 | PASS |
+| `cancellation_parent_to_child` | 802 | 963 | 803 | PASS |
+| `contract_compile` | 12,108 | 14,530 | 11,686 | PASS |
+| `contract_validate` | 117 | 141 | 117 | PASS |
+| `durable_event_outbox` | 3,970,245 | 4,764,294 | 4,321,219 | PASS |
+| `readiness_query_one_check` | 2,110 | 2,532 | 818 | PASS |
+| `runtime_start_and_shutdown` | 232,917 | 279,501 | 217,642 | PASS |
+| `semantic_cache_lookup` | 54,983 | 65,980 | 55,287 | PASS |
+| `state_read` | 44,774 | 53,729 | 46,044 | PASS |
+| `state_transaction_write` | 3,568,095 | 4,281,714 | 3,616,587 | PASS |
+| `telemetry_observation` | 77 | 93 | 72 | PASS |
+| `typed_content_fingerprint_1k` | 1,201 | 1,442 | 1,167 | PASS |
+
+### Candidate and changed-definition reference gates
+
+Each row passed against the frozen per-workload median plus the stated 20% allowance. Detailed repeated
+samples, environment identity, and workload-definition fingerprints are in the JSON reference artifact.
+
+| Workload | Classification | Reference median | Fixed budget | Final gate median | Result |
+|---|---|---:|---:|---:|---|
+| `change_cone_100_node_chain` | not comparable | 48,866 | 58,640 | 48,501 | PASS |
+| `resource_usage_durable` | not comparable | 4,593,762 | 5,512,515 | 4,579,409 | PASS |
+| `capability_registration` | candidate only | 2,322 | 2,787 | 2,282 | PASS |
+| `capability_resolution_one_candidate` | candidate only | 1,712 | 2,055 | 1,714 | PASS |
+| `change_cone_10000_node_chain` | candidate only | 10,612,465 | 12,734,958 | 11,122,460 | PASS |
+| `change_cone_1000_node_chain` | candidate only | 713,053 | 855,664 | 713,259 | PASS |
+| `cold_native_boot` | candidate only | 77,554,642 | 93,065,571 | 77,130,895 | PASS |
+| `command_dispatch_local_mutation` | candidate only | 15,526,585 | 18,631,902 | 15,546,737 | PASS |
+| `ephemeral_event_fanout` | candidate only | 1,916 | 2,300 | 1,965 | PASS |
+| `git_exact_change_assessment` | candidate only | 381,867,125 | 458,240,550 | 389,468,525 | PASS |
+| `proof_minimal_selection` | candidate only | 9,145 | 10,974 | 9,131 | PASS |
+| `proof_obligation_compile` | candidate only | 17,737 | 21,285 | 18,170 | PASS |
+| `resource_lease_and_delegation` | candidate only | 639 | 767 | 640 | PASS |
+| `scheduler_owner_rotation_100` | candidate only | 148 | 178 | 143 | PASS |
+| `scheduler_owner_rotation_1000` | candidate only | 195 | 234 | 209 | PASS |
+| `scheduler_owner_rotation_10000` | candidate only | 292 | 351 | 290 | PASS |
+| `state_backup_restore` | candidate only | 62,145,275 | 74,574,330 | 62,041,875 | PASS |
+| `state_backup_snapshot` | candidate only | 54,025,000 | 64,830,000 | 55,984,000 | PASS |
+| `warm_native_boot` | candidate only | 28,766,600 | 34,531,920 | 29,999,062 | PASS |
+
+### Scaling and idle memory
+
+- Change Cone per-node ratio: `2.293243x`, limit `3x`, PASS.
+- Durable usage-write ratio across ledger cardinalities: `1.052559x`, limit `2x`, PASS.
+- Scheduler owner-rotation ratio: `2.027972x`, limit `3x`, PASS.
+- Repeated idle-memory comparison: baseline median peak Windows working set `7,667,712` bytes;
+  candidate median `8,198,144` bytes; candidate MAD `14,336` bytes; candidate maximum
+  `8,228,864` bytes; fixed budget `9,201,255` bytes (baseline median + 20%). Result PASS.
+  This is one Windows process methodology, not a cross-platform memory cap.
+
+All raw reports and exact harness snapshots are in
+`../.engineering/evidence/FGE-004-M00/C03-CORRECTION/` (repository-relative
+`.engineering/evidence/FGE-004-M00/C03-CORRECTION/`). Local performance evidence does not replace
+the exact-head hosted Linux/Windows egress gate or the independent performance review. The fresh
+evidence-head CI and four package-bound independent reviews remain separate gates.

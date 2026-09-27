@@ -1,0 +1,24 @@
+{
+  "state": "native_ready",
+  "readiness": "ready",
+  "readiness_fingerprint": "46548a1bd59c440159c469e759416a8658e3dbbf7ee67c42c8748d96f70a7fa7",
+  "offline_ready": true,
+  "state_root": "\\\\?\\D:\\Projects\\hive-forge\\output\\IA1-C03-CORRECTION\\doctor-local-e1da083",
+  "database_integrity": "ok",
+  "database_schema_version": 7,
+  "resource_usage_fingerprint": "d53d18c23212ea7b6300594bb89bce60218f6eff2b9d628b8cc42d3e79bbd5ab",
+  "capability_epoch": 2,
+  "capability_snapshot_fingerprint": "cff01036a0e996f75c404bb4a971cb9df04ae5a0198d37a14ec9ba1427aa2af2",
+  "optional_services": {
+    "core": "not_configured",
+    "hades": "not_configured",
+    "hive": "not_configured",
+    "iris": "not_configured",
+    "llm": "not_configured",
+    "provider": "not_configured",
+    "remote_telemetry": "not_configured",
+    "semantic_embeddings": "disabled"
+  },
+  "semantic_embeddings": "disabled",
+  "boot_fingerprint": "682c8637cd0b0d8c07efe5a38220d17b4488395e1a2124ada22bab834e2d9eb6"
+}

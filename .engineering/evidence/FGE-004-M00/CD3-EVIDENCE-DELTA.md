@@ -111,3 +111,27 @@ SQLite write-contention problems; only the completed report above is counted. Fo
 review sessions must inspect the identical final frozen package digest before any assurance verdict.
 The PR remains open, draft and unmerged; canonical checkpoint state is untouched; no M00 promotion or
 M01 start is claimed.
+
+## C03 reviewer-correction execution delta — e1da083 (2026-09-27)
+
+Round-1 reliability finding R1 is corrected by writer reservation before outbox reads and pure-command
+retry classification for SQLite BUSY/LOCKED commit contention. Regression coverage includes
+concurrent eventful store and command commits, uniqueness/receipt behavior, extended error codes, and
+stable retryable error mapping. This does not retry external handlers or relax unknown-outcome
+controls.
+
+Performance findings P1 and P2 are corrected in the measurement gate: the implementation now performs
+paired repeated idle working-set measurements, uses a fixed baseline-median + 20% comparable-workload
+budget, requires exact frozen references for candidate-only/non-comparable workloads, and validates
+the reference's candidate/baseline/environment/workload/sample identity. The final e1da083 local gate
+passed 13/13 comparable, 19/19 reference, and 3/3 scaling checks; capture-only output is not counted
+as PASS. Detailed reports and hashes are in `docs/PERFORMANCE-M00-CANDIDATE.md` and the
+`C03-CORRECTION/` artifact folder.
+
+C1's stale-lock finding is addressed at package construction, not by editing the old ZIP. The old
+package and its review remain immutable historical records. The replacement package will be generated
+only after the evidence commit's exact-head CI result is available and will have an exact matching
+current context lock. Four fresh independent reviewers must use one identical package digest.
+
+The exact implementation commit's 73-path raw source check, local validation and six S21 readiness
+groups passed. Local Windows egress is skipped; hosted Linux/Windows egress proof remains mandatory.

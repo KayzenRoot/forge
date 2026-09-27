@@ -24,3 +24,19 @@ This proposed text remains unapplied. The final documentation/evidence head requ
 source-fingerprint verification and exact-head hosted CI through PR #9, followed by four fresh,
 distinct reviews of one frozen package digest. This overlay does not promote or certify M00, merge the
 PR, change either canonical checkpoint file, or begin M01.
+
+## C03 reviewer-correction evidence overlay — e1da083 (2026-09-27)
+
+The implementation evidence now includes the R1 SQLite writer-contention correction and the P1/P2
+repeatable performance and candidate-reference gate. At code commit
+`e1da083893d9335118519392c1cdb36021cbfc74`, local source verification passed for 73 raw Git blob
+entries; the full local validation suite, six S21 local groups, 13/13 comparable performance checks,
+19/19 reference gates, three scaling checks, and paired idle-memory budget passed. Local egress was
+not asserted. The measurement reports and raw evidence are preserved in
+`C03-CORRECTION/`.
+
+This is still candidate evidence only. A new evidence/documentation commit needs its own exact-head
+hosted checks and a replacement frozen package with a matching current context lock. Four fresh
+independent package-bound reviews and applicable audit disposition remain required. This proposal is
+not applied: do not merge PR #9, edit or promote either canonical checkpoint, certify M00, or start
+M01.
