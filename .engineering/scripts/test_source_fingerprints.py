@@ -438,6 +438,28 @@ def main() -> int:
         }:
             raise AssertionError(f"symlink tree entry was not rejected: {result}")
 
+        symlink_loop_repo, _, _ = create_fixture(parent, "symlink-loop", paths)
+        loop_target_oid = run_git(
+            symlink_loop_repo,
+            "hash-object",
+            "-w",
+            "--stdin",
+            input_bytes=symlink_path.encode("utf-8"),
+        ).decode("ascii").strip()
+        run_git(
+            symlink_loop_repo,
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"120000,{loop_target_oid},{symlink_path}",
+        )
+        run_git(symlink_loop_repo, "commit", "--quiet", "-m", "symlink loop fixture")
+        code, result, _ = invoke(symlink_loop_repo)
+        if code == 0 or "not_regular_blob" not in {
+            item.get("reason") for item in result.get("mismatches", []) if isinstance(item, dict)
+        }:
+            raise AssertionError(f"self-referential symlink tree entry was not rejected: {result}")
+
         empty_repo = parent / "not-a-repository"
         empty_repo.mkdir()
         code, result, _ = invoke(empty_repo)
@@ -450,7 +472,8 @@ def main() -> int:
         "source fingerprint verifier fixtures passed: valid CRLF object, deterministic output, "
         "digest mismatch, invalid digest, duplicate, malformed, missing path, traversal, "
         "wrong count, path order, case-only Git tree alias, unavailable source blob, "
-        "unlisted build script rejection, oversized source blob bound, symlink, fabricated commit rejection, SHA-1/SHA-256 "
+        "unlisted build script rejection, oversized source blob bound, symlink and self-referential symlink loop, "
+        "fabricated commit rejection, SHA-1/SHA-256 "
         "object-format validation, path-depth and tree-entry bounds, Git failure"
     )
     return 0

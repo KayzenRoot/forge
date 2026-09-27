@@ -171,3 +171,13 @@ must bind the exact committed evidence head and is included in the external froz
 The expected path count/order remains fixed; evidence, work-order and manifest files remain excluded
 from the source set by the verifier's existing policy. This record does not claim verification until
 that exact-head output reports pass with zero errors and mismatches.
+
+## C03 untrusted-source loop fixture follow-up
+
+The verifier fixture suite now includes a Git symlink blob whose target points back to its own path.
+The verifier rejects this self-referential loop as a non-regular source entry without resolving or
+traversing the target. `python -B .engineering/scripts/test_source_fingerprints.py` passed with this
+case included. The updated test file remains covered by the 72-path raw-Git-blob inventory; the final
+committed verifier result and exact source SHA/tree binding are recorded in the external C03 lock and
+the current PR #9 description. This adds negative test coverage only; no checkpoint or source authority
+changed.

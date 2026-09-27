@@ -195,6 +195,12 @@ evidence only and does not approve an external SLO or certify M00.
   no more than the paired baseline median plus a predeclared 20% allowance. Baseline outliers and
   candidate MAD do not widen this acceptance limit. Workload source definitions, inner sample counts,
   and operation counts are fingerprinted; changed workloads are excluded from common acceptance.
+- Threshold rationale: across the ten repeated baseline outer medians for the 13 comparable workload
+  definitions, the largest median absolute deviation relative to its median was 16.91% (`state_read`).
+  The fixed 20% allowance rounds above that observed dispersion and is held constant across workloads;
+  it cannot widen because of a candidate outlier or candidate MAD. This is a repeat-measurement-based
+  regression tolerance for this Windows/Rust workload set, not an approved external SLO or a universal
+  latency guarantee.
 - Result: **PASS — 13/13 comparable workloads and 3/3 scaling checks**. Two common-name workloads,
   `change_cone_100_node_chain` and `resource_usage_durable`, are marked `not_comparable` because the
   workload definition or iteration count differs. The candidate records 17 additional or changed
