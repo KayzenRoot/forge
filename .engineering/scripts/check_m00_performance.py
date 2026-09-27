@@ -214,7 +214,10 @@ def workload_definition_fingerprints(source_bytes: bytes) -> dict[str, str]:
         region_start = match.start()
         if match.group(1) == "report_samples":
             arguments = call[call.find("(") + 1 : -1]
-            last_argument = arguments.rsplit(",", 1)[-1].strip()
+            # Rust calls commonly end their final argument with a comma.
+            # Strip it before selecting the variable whose setup defines
+            # this sampled workload region.
+            last_argument = arguments.rstrip().rstrip(",").rsplit(",", 1)[-1].strip()
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", last_argument):
                 continue
             declaration = re.search(
