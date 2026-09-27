@@ -1,0 +1,137 @@
+# FGE-004-M00 CD3 — Accounting Atomicity Evidence Delta
+
+Status: HISTORICAL CD3 LOCAL CORRECTION QUALIFIED; C03 overlay appended below; NOT CERTIFIED OR APPROVED
+
+## Identity
+
+- Work Order: `FGE-004-M00-CD3-Accounting-Atomicity-Evidence-Assurance`.
+- Branch: `fge-004-m00-implementation`.
+- Admitted parent / PR #9 head: `58a0616da55d574e7e556056f0e47cc46571d7c7`.
+- Base: `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
+- Implementation candidate: `4d6109024d652fd0ac7454e14eeb5aaa9f5113ac`. PR #9 must remain draft and unmerged. Parent Actions run `35878684088` is evidence for the parent only; exact-head run `35890844050` passed all four configured jobs on the implementation candidate, including Ubuntu and Windows outbound-network-blocked doctor checks. Any later evidence-only commit must use its own PR #9 exact-head check binding and does not inherit this result.
+
+## Correction
+
+The previous live-accounting sequence validated a lease, awaited a durable SQLite insert, then mutated the lease's shared in-memory state. A clone could delegate while that await was in progress. Cancellation, revocation, or an ambiguous storage result could also leave a durable row without a matching live charge.
+
+CD3 holds a per-lease asynchronous accounting gate from validation through durable insertion and in-memory charge. Clones share the gate through their lease node; `ensure_active` and delegation report `AccountingInProgress` during the transition. The existing SQLite transaction still enforces the shared durable pool ceiling across boots. Exact replay of a record already applied in memory is a no-op; conflicting identity/content fails closed.
+
+An armed accounting guard marks the live governor dirty if cancellation, persistence ambiguity, or a post-insert failure leaves the transition uncertain. Dirty state rejects new leases and further lease activity with `AccountingReconciliationRequired`; a fresh native boot replays the immutable ledger before granting new authority. Revocation may race with persistence; if the durable row lands but the lease can no longer be charged, the governor fails closed and restart reconciles the row.
+
+## Local verification
+
+- Focused `forge-kernel` boot accounting tests: 10 passed, including clone/delegation contention, cancellation after durable insert, revocation after durable insert, persistence failure, conflicting replay, shared-pool race, restart reconciliation, reduced limits, and Survival Reserve separation.
+- `cargo test --workspace --locked --offline`: 95 passed (1 CLI, 6 contracts, 73 kernel, 15 state); doc tests passed (none defined).
+- `cargo fmt --all -- --check`, workspace `cargo check`, and workspace Clippy with `-D warnings`: passed.
+- Release CLI and idle-memory helper builds: passed.
+- `cargo deny check`: passed; duplicate `cpufeatures`, `hashbrown`, and `syn` versions remain warnings.
+- `cargo audit --deny warnings`: passed; 1,267 advisories loaded and 189 locked dependencies scanned.
+- Fresh release `doctor`: `native_ready`, database integrity `ok`, schema v2, HIVE `not_configured`, semantic embeddings `disabled`.
+- Five-sample release benchmark: durable usage accounting median `7,607,090 ns/op`; resource lease/delegation median `476 ns/op`. Exact cache identity had 10,000 hits and zero misses; token and monetary savings remain `not_measured`.
+- Fresh idle-memory helper: all five working-set samples `6,868,992` bytes (`6.55 MiB`).
+- Local Windows firewall setup remains blocked by `Access denied`; local doctor is not outbound-isolation evidence.
+
+## Documentation and evidence changes
+
+Updated S08, S12 and S20 module contracts, runtime/recovery documentation, performance snapshot, CEC, Evidence Bundle and proposed checkpoint delta. `.engineering/CHECKPOINT.md` and `.engineering/CHECKPOINT.json` remain unchanged. The complete tracked-source SHA-256 inventory is maintained in [SOURCE-FINGERPRINTS.sha256](SOURCE-FINGERPRINTS.sha256).
+
+## Assurance boundary and disposition
+
+UADS plan/run `wo_b161d2f667649b5c` / `er_586620b1f8dd4753` records a pre-CD3 digest, `1e7bb0a5d6c779590680c790cf8801c59c5827e7f1af1cf224bd5f9ad6f77889`; it does not certify CD3 or CD4. After the CD3 commit, `uads verify --json` returned `no implementation change to verify` on the clean worktree and the run was marked `blocked`, so fresh digest-bound CD3/CD4 execution evidence is not established. PR #9 records the exact-head candidate CI and is the authoritative location for the check binding of any later evidence-only commit. Independent security/performance review and four distinct assurance sessions are required; no visible executor result substitutes for those reviewer verdicts. If UADS cannot prove distinct reviewer sessions, stop as `BLOCKED — INDEPENDENT_REVIEW_BACKEND_REQUIRED`.
+
+No merge, checkpoint promotion, M01 work, or UADS repository commit/push is authorized by this delta.
+
+
+## C03 correction evidence overlay — historical fda8969 snapshot (2026-09-26)
+
+This section supersedes the stale C03 candidate and performance status above; the CD3 accounting facts remain historical evidence. It does not approve this commit or certify M00.
+
+- C03 correction candidate SHA: `fda8969097320cdad9b8f92dffb4fddd8fc2424e`; tree `f6c4c21a7f5e910c85c6bf5844ddb3b294679e13`; baseline `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`. The 68-entry source-fingerprint verifier passed with zero mismatches on this candidate.
+- Exact-head Actions run [36270900434](https://github.com/KayzenRoot/forge/actions/runs/36270900434) passed all four jobs on `fda8969097320cdad9b8f92dffb4fddd8fc2424e`, including hosted outbound-network-blocked doctor checks on Linux and Windows. Any later evidence-only revision needs its own exact-head binding.
+- Repeated performance comparison passed 16/16 common checks and all three scaling checks at ten paired outer runs × five inner samples. Change Cone ratio 2.296× (limit 3×), scheduler ratio 2.108× (limit 3×), durable ledger write ratio 1.079× (limit 2×). A five-pair run on the same candidate first reported two failures; both reports are preserved and the expanded run passed those workloads. See the C03 subsection of `docs/PERFORMANCE-M00-CANDIDATE.md`.
+- H1-H5 and ML1-ML7 correction coverage is summarized in `C03-CORRECTION-MATRIX.md`. Executable performance acceptance is complete; an independent performance reviewer remains required. Four distinct, fresh native Codex review sessions must inspect the same immutable package digest.
+- PR #9 remains open, draft, and unmerged. Canonical checkpoint files remain unchanged; M00 is not promoted and M01 has not begun.
+
+## C03 current correction overlay — implementation head 0ce565e (2026-09-26)
+
+This overlay supersedes the candidate and performance status in the preceding C03 snapshot; CD3
+accounting facts remain historical evidence. It does not certify M00 or change checkpoint authority.
+
+- Implementation head/tree: `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` /
+  `27e4edd886a8cadf802db1359bef45fe265c920c`; baseline `2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4`.
+- Exact-head [Actions run 36278984106](https://github.com/KayzenRoot/forge/actions/runs/36278984106)
+  passed all four jobs, including Linux and Windows blocked-egress checks. This validates the code head
+  only; the documentation head must be separately checked.
+- The 72-entry raw-Git-blob source verifier passed with zero mismatches. Schema v4 adds durable,
+  signed unknown-outcome resolution and backup/restore preservation; the retry path requires a fresh
+  command authorization. Resource lease expiry/reclamation is bounded and monotonic, with stale handles
+  failing closed.
+- Local Rust, source-fingerprint, dependency, release-doctor, and six S21 readiness checks passed on
+  Windows. Local network blocking is not claimed because Windows firewall setup was denied.
+- Performance: the first ten-pair report on `0ce565e` failed only resource lease/delegation
+  (candidate median 646 ns/op vs 637 ns/op budget). The preserved rerun passed 16/16 comparable checks
+  and 3/3 scaling checks; lease median was 664 ns/op vs 667 ns/op budget, with 445 ns/op C02 median.
+  These reports show a narrow pass under the declared threshold and measurable expiry-path overhead;
+  they do not approve an SLO. The report hashes and full table are in `docs/PERFORMANCE-M00-CANDIDATE.md`.
+- Four fresh native reviewers must still review one frozen package digest. Their findings are not
+  represented as approval until their actual verdicts are returned and bound externally.
+
+PR #9 remains open, draft, and unmerged. `.engineering/CHECKPOINT.md` and `.engineering/CHECKPOINT.json`
+remain unchanged; M00 is not promoted and M01 has not started.
+
+## C03 final correction executor overlay — implementation head f03da4a (2026-09-26)
+
+This overlay supersedes the earlier candidate and performance status. It records executor evidence,
+not final approval.
+
+- Corrected code commit: `f03da4aa02e619b5affcff09baf6fd56337a286e`; final evidence-head SHA/tree, raw
+  source verification and exact-hosted-CI run will be stated by the final external lock and PR #9
+  update after the evidence commit.
+- The finalization path is monotonic and recoverable for confirmed external effects. It never permits
+  rerunning the handler after confirmation. Exact signed local-transition revisions are append-only
+  and single-use; state/outbox/receipt/final marker are atomic. SQLite writer reservation now covers
+  staged finalization and durable outbox sequence allocation.
+- Outbox replay preserves producer order; acknowledgements and poison-event retry state are per
+  consumer. The quarantine threshold is three failed decodes. Backups include CAS inventory and
+  restore verifies content against an independently held expected fingerprint.
+- Secret canaries, concurrent outbox sequencing, crash-boundary tests, consumer replay and CAS
+  tampering regressions pass. Local test totals are 1 CLI, 6 contracts, 85 kernel, 26 state and one
+  compile-fail doctest. Release doctor and all six local S21 readiness IDs pass on schema 7; local
+  egress is not asserted.
+- Final-correction performance report on `f03da4a`: 10 paired outer runs, 5 inner samples, fixed
+  20% allowance, 13/13 comparable workloads and 3/3 scaling curves PASS. Two workloads are excluded
+  as `not_comparable`. Report SHA-256:
+  `4b068854c60575b0a975b8495c956005194070ea381a1be52a44070fbf523b7f`.
+- Dependency policy and audit passed. `cargo deny` reports duplicate `cpufeatures`, `hashbrown`, and
+  `syn` versions; no policy category failed.
+
+The historical `fda8969` performance threshold based on the observed maximum is superseded. Earlier
+interrupted benchmark attempts on the final correction path exposed and led to fixes for parser and
+SQLite write-contention problems; only the completed report above is counted. Four fresh native
+review sessions must inspect the identical final frozen package digest before any assurance verdict.
+The PR remains open, draft and unmerged; canonical checkpoint state is untouched; no M00 promotion or
+M01 start is claimed.
+
+## C03 reviewer-correction execution delta — e1da083 (2026-09-27)
+
+Round-1 reliability finding R1 is corrected by writer reservation before outbox reads and pure-command
+retry classification for SQLite BUSY/LOCKED commit contention. Regression coverage includes
+concurrent eventful store and command commits, uniqueness/receipt behavior, extended error codes, and
+stable retryable error mapping. This does not retry external handlers or relax unknown-outcome
+controls.
+
+Performance findings P1 and P2 are corrected in the measurement gate: the implementation now performs
+paired repeated idle working-set measurements, uses a fixed baseline-median + 20% comparable-workload
+budget, requires exact frozen references for candidate-only/non-comparable workloads, and validates
+the reference's candidate/baseline/environment/workload/sample identity. The final e1da083 local gate
+passed 13/13 comparable, 19/19 reference, and 3/3 scaling checks; capture-only output is not counted
+as PASS. Detailed reports and hashes are in `docs/PERFORMANCE-M00-CANDIDATE.md` and the
+`C03-CORRECTION/` artifact folder.
+
+C1's stale-lock finding is addressed at package construction, not by editing the old ZIP. The old
+package and its review remain immutable historical records. The replacement package will be generated
+only after the evidence commit's exact-head CI result is available and will have an exact matching
+current context lock. Four fresh independent reviewers must use one identical package digest.
+
+The exact implementation commit's 73-path raw source check, local validation and six S21 readiness
+groups passed. Local Windows egress is skipped; hosted Linux/Windows egress proof remains mandatory.

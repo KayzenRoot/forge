@@ -1,6 +1,6 @@
 # M00-S08 — State Store & Recovery Foundation
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S07
 
@@ -14,6 +14,7 @@ Forge MUST distinguish:
 3. CACHE — disposable/rebuildable acceleration state.
 4. EPHEMERAL — process/session state that must not be relied upon after restart.
 5. EXTERNAL_REFERENCE — identifiers/pointers to state owned by another system, never silently copied into Forge authority.
+6. RESOURCE_USAGE — immutable canonical S20 records with stable replay identity and project/work-order/execution/capability/provider attribution.
 
 A value cannot change state class implicitly.
 
@@ -27,6 +28,8 @@ SQLite is not assumed to be the forever solution for every future distributed wo
 - Large immutable blobs/artifacts: content-addressed object/file layer when appropriate.
 - Cache: separate namespace/tables/files with explicit eviction/rebuild semantics.
 - Evidence: append-oriented records plus content fingerprints; immutable artifacts may live in CAS.
+- Resource usage: append-only SQLite ledger owned by S08; exact replay is a no-op while the live governor is healthy, and identity/content drift is rejected. The shared pool ceiling is enforced atomically with the durable insert. Native boot applies the live lease charge only after insertion while holding the per-lease accounting gate; an interrupted or ambiguous transition marks the in-memory governor as requiring recovery and blocks new authority until boot replays the ledger.
+- Unknown command outcomes: append-only resolution records bind a durable intent to a verified host decision ID, outcome, evidence fingerprint, decision fingerprint and resolution time. The decision is consumed in the same SQLite transaction as the intent transition; a positive external-effect result remains blocked for local finalization, an inconclusive result remains unknown, and only a verified non-commit result becomes retry-eligible.
 - Secrets: never ordinary state rows; only secure references/metadata.
 
 ## Proprietary technologies
@@ -162,3 +165,47 @@ HIVE remains owner of its own knowledge/memory stores. Core and IRIS own their d
 
 ## Acceptance criteria
 S08 is accepted when Forge has an explicit state taxonomy, local transactional authority, module ownership, crash-consistency/recovery semantics, cache disposability, evidence integrity, migration discipline and a storage abstraction that preserves Sovereign Standalone Mode without pretending SQLite must solve every future distributed problem.
+
+## C03 durable command commit boundary
+
+The candidate schema is v4. It records command owner/lease state, authorization-decision replay and
+revocation state, incremental shared resource-ledger totals, and an append-only external-outcome
+resolution ledger. A durable command's canonical
+compare-and-set transition, outbox events, and idempotency receipt commit in one SQLite transaction.
+The event bus is notified only after commit; pending outbox rows are the recovery source. An
+`in_flight` intent remains live while its owner heartbeat and lease are current. A missing/stale
+owner or expired lease becomes `unknown_outcome`, which must be reconciled and is never blindly
+retried. Opening a second store does not invalidate another live owner's intent.
+
+A host-signed outcome resolution binds the exact command identity and authority scope to a short-
+lived decision and evidence fingerprint. The consumed decision, immutable resolution row, and
+unknown-intent transition commit atomically. `effect_not_committed` makes the intent eligible for a
+new attempt, but command execution still requires a fresh command authorization; `effect_committed`
+and `inconclusive` remain blocked as `unknown_outcome`. The v3-to-v4 migration adds the resolution
+table without rewriting existing intents, and verified database backup/restore preserves its rows.
+
+Ordinary persisted payloads, including evidence, command results, canonical state, durable events,
+resource-use metadata, and cache values, reject secret-bearing field names and credential-like
+strings before serialization. Rejection messages do not echo payload values. Secrets belong in
+secure references, not ordinary rows or their backups.
+
+## C03 confirmed-effect finalization correction
+
+Schema v7 adds an immutable staged envelope for a handler-confirmed effect. The envelope binds the
+replay-safe result, optional local compare-and-set transition, and durable outbox events to one
+content fingerprint. A local CAS conflict leaves the intent in
+`effect_committed_pending_finalization`; it cannot be changed to retryable by an outcome-resolution
+claim, and the handler/external effect is never rerun. A trusted host may authorize a narrowly scoped
+revision of only the local transition, bound to the exact command identity, prior envelope
+fingerprint, subject/action/scope/resource/run, replacement transition, expiry and single-use
+decision ID. Each revision is append-audited and capped at 32 per intent.
+
+Finalization applies the staged CAS, outbox rows, idempotency receipt and finalization marker in one
+SQLite transaction. Reopen can resume the staged local half. Process-crash regressions terminate
+after the CAS, each outbox insert, receipt, finalization marker, and commit; reopening proves either
+the entire transaction is absent and safely retryable locally, or the entire transaction is present
+and idempotent. These tests do not claim power-loss or device-level fsync proof.
+
+Backup manifests use an unkeyed BLAKE3 integrity fingerprint. Restore requires the expected
+fingerprint through a separately trusted channel; storing the only expected value next to the
+backup does not authenticate an attacker who can replace both the database and its manifest.

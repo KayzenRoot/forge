@@ -1,0 +1,3935 @@
+{
+  "baseline_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+  "baseline_snapshot_verified_against_git_archive": true,
+  "benchmark_harness_sources": {
+    "baseline": {
+      "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+      "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+      "path": "crates/forge-kernel/benches/m00_baselines.rs",
+      "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+    },
+    "candidate": {
+      "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+      "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+      "path": "crates/forge-kernel/benches/m00_baselines.rs",
+      "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+    }
+  },
+  "candidate_budget_reference": {
+    "baseline_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+    "candidate_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+    "candidate_tree_sha": "c5a9d5950af40e43f978d47b89186803121f3615",
+    "reference_baseline_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+    "reference_candidate_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+    "reference_candidate_tree_sha": "c5a9d5950af40e43f978d47b89186803121f3615",
+    "reference_environment": {
+      "architecture": "AMD64",
+      "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "processor": "AMD64 Family 23 Model 96 Stepping 1, AuthenticAMD",
+      "rustc_vv": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.1\nLLVM version: 22.1.8"
+    },
+    "reference_identity_errors": [],
+    "reference_identity_matches": true,
+    "reference_kind": "repeated_candidate_baseline_not_external_slo",
+    "reference_sha256": "24a41218b77ecfbca757cd82e5fe7e83c5e4f50ea8c8015f9fc576c95b6cf941",
+    "relative_allowance_percent": 20,
+    "schema_version": 1,
+    "workload_results": {
+      "capability_registration": {
+        "candidate_outer_medians_ns": [
+          2387,
+          2302,
+          2286,
+          2584,
+          2334,
+          2278,
+          2267,
+          2268,
+          2220,
+          2252
+        ],
+        "candidate_summary": {
+          "mad_ns": 25,
+          "median_ns": 2282,
+          "observed_max_ns": 2584,
+          "upper_budget_ns": 2584
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "a3d0aa3dc68220d913f89106f49f3bb94e5c71169ace15acabfd616d3051095e",
+        "pass": true,
+        "reference_definition_sha256": "a3d0aa3dc68220d913f89106f49f3bb94e5c71169ace15acabfd616d3051095e",
+        "reference_errors": [],
+        "reference_median_ns": 2322,
+        "reference_outer_medians_ns": [
+          2261,
+          2331,
+          2429,
+          2273,
+          2372,
+          2340,
+          2313,
+          2265,
+          2257,
+          2419
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 2787
+      },
+      "capability_resolution_one_candidate": {
+        "candidate_outer_medians_ns": [
+          1799,
+          1681,
+          1685,
+          1714,
+          1922,
+          1720,
+          1714,
+          1678,
+          1701,
+          1783
+        ],
+        "candidate_summary": {
+          "mad_ns": 31,
+          "median_ns": 1714,
+          "observed_max_ns": 1922,
+          "upper_budget_ns": 1922
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "5266096f8aca67e6acf9b50f61c1a40db747e9eec7d554b6cced6642b0f187df",
+        "pass": true,
+        "reference_definition_sha256": "5266096f8aca67e6acf9b50f61c1a40db747e9eec7d554b6cced6642b0f187df",
+        "reference_errors": [],
+        "reference_median_ns": 1712,
+        "reference_outer_medians_ns": [
+          1714,
+          1688,
+          1829,
+          1885,
+          1684,
+          1733,
+          1692,
+          1727,
+          1681,
+          1710
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 2055
+      },
+      "change_cone_10000_node_chain": {
+        "candidate_outer_medians_ns": [
+          11290950,
+          11209380,
+          10615055,
+          11241775,
+          10513570,
+          11080315,
+          11249780,
+          10526195,
+          11164605,
+          10582140
+        ],
+        "candidate_summary": {
+          "mad_ns": 147905,
+          "median_ns": 11122460,
+          "observed_max_ns": 11290950,
+          "upper_budget_ns": 11566175
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+        "pass": true,
+        "reference_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+        "reference_errors": [],
+        "reference_median_ns": 10612465,
+        "reference_outer_medians_ns": [
+          10777285,
+          10510955,
+          10595500,
+          11445665,
+          10477145,
+          11200440,
+          11479860,
+          10629430,
+          10577360,
+          10446615
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 12734958
+      },
+      "change_cone_1000_node_chain": {
+        "candidate_outer_medians_ns": [
+          833274,
+          687178,
+          682622,
+          737130,
+          689672,
+          740651,
+          732364,
+          753640,
+          694154,
+          690016
+        ],
+        "candidate_summary": {
+          "mad_ns": 24976,
+          "median_ns": 713259,
+          "observed_max_ns": 833274,
+          "upper_budget_ns": 833274
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+        "pass": true,
+        "reference_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+        "reference_errors": [],
+        "reference_median_ns": 713053,
+        "reference_outer_medians_ns": [
+          824544,
+          729665,
+          692269,
+          868662,
+          698687,
+          776923,
+          727420,
+          675500,
+          687059,
+          679563
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 855664
+      },
+      "change_cone_100_node_chain": {
+        "candidate_outer_medians_ns": [
+          48504,
+          47681,
+          47695,
+          48684,
+          48839,
+          50098,
+          48258,
+          48499,
+          48198,
+          50344
+        ],
+        "candidate_summary": {
+          "mad_ns": 320,
+          "median_ns": 48501,
+          "observed_max_ns": 50344,
+          "upper_budget_ns": 50344
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+        "pass": true,
+        "reference_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+        "reference_errors": [],
+        "reference_median_ns": 48866,
+        "reference_outer_medians_ns": [
+          51396,
+          48604,
+          48888,
+          51179,
+          48626,
+          51341,
+          48430,
+          48006,
+          48844,
+          50539
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 58640
+      },
+      "cold_native_boot": {
+        "candidate_outer_medians_ns": [
+          77599955,
+          76313780,
+          75668330,
+          79823785,
+          76661835,
+          78409750,
+          83576970,
+          74257585,
+          76480885,
+          77822310
+        ],
+        "candidate_summary": {
+          "mad_ns": 1047985,
+          "median_ns": 77130895,
+          "observed_max_ns": 83576970,
+          "upper_budget_ns": 83576970
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "c7fc18f60dfde6495d52f2ba65fc162a70abba6e96aba2e115077593a21e2857",
+        "pass": true,
+        "reference_definition_sha256": "c7fc18f60dfde6495d52f2ba65fc162a70abba6e96aba2e115077593a21e2857",
+        "reference_errors": [],
+        "reference_median_ns": 77554642,
+        "reference_outer_medians_ns": [
+          79110850,
+          79299820,
+          77279145,
+          78245030,
+          76382105,
+          77830140,
+          83126965,
+          77231230,
+          74506655,
+          77167235
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 93065571
+      },
+      "command_dispatch_local_mutation": {
+        "candidate_outer_medians_ns": [
+          15698426,
+          15482071,
+          15163095,
+          15659151,
+          15593691,
+          15386410,
+          15522394,
+          15571080,
+          15166708,
+          15882094
+        ],
+        "candidate_summary": {
+          "mad_ns": 132051,
+          "median_ns": 15546737,
+          "observed_max_ns": 15882094,
+          "upper_budget_ns": 15942890
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "7004a26cdcbedadd2135ed09910346eb6d6d02a8a05fd1d4dfd3ec2fac2c54ee",
+        "pass": true,
+        "reference_definition_sha256": "7004a26cdcbedadd2135ed09910346eb6d6d02a8a05fd1d4dfd3ec2fac2c54ee",
+        "reference_errors": [],
+        "reference_median_ns": 15526585,
+        "reference_outer_medians_ns": [
+          15650364,
+          15357508,
+          15360729,
+          15598813,
+          15999412,
+          15222774,
+          15688404,
+          15081991,
+          15454358,
+          15873371
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 18631902
+      },
+      "ephemeral_event_fanout": {
+        "candidate_outer_medians_ns": [
+          1985,
+          1900,
+          1887,
+          2115,
+          1959,
+          2208,
+          1926,
+          1902,
+          1972,
+          2001
+        ],
+        "candidate_summary": {
+          "mad_ns": 51,
+          "median_ns": 1965,
+          "observed_max_ns": 2208,
+          "upper_budget_ns": 2208
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "3ff0a529255f8071472538d3a320873649a78a45f0b1bd7972710b1779e45974",
+        "pass": true,
+        "reference_definition_sha256": "3ff0a529255f8071472538d3a320873649a78a45f0b1bd7972710b1779e45974",
+        "reference_errors": [],
+        "reference_median_ns": 1916,
+        "reference_outer_medians_ns": [
+          1923,
+          1910,
+          1888,
+          2086,
+          1881,
+          1947,
+          2179,
+          1889,
+          1896,
+          1960
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 2300
+      },
+      "git_exact_change_assessment": {
+        "candidate_outer_medians_ns": [
+          419894700,
+          368466900,
+          369187100,
+          413881000,
+          364231300,
+          409749950,
+          420331650,
+          362938250,
+          363353600,
+          413028450
+        ],
+        "candidate_summary": {
+          "mad_ns": 24824850,
+          "median_ns": 389468525,
+          "observed_max_ns": 420331650,
+          "upper_budget_ns": 463943075
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "3259e029e38786794d5b22c989ae770f572ba2d2333f3d82ada90a1bbd424be7",
+        "pass": true,
+        "reference_definition_sha256": "3259e029e38786794d5b22c989ae770f572ba2d2333f3d82ada90a1bbd424be7",
+        "reference_errors": [],
+        "reference_median_ns": 381867125,
+        "reference_outer_medians_ns": [
+          398585150,
+          362589000,
+          358207100,
+          408287200,
+          365149100,
+          424421800,
+          404836250,
+          361166150,
+          361603650,
+          409291650
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 458240550
+      },
+      "proof_minimal_selection": {
+        "candidate_outer_medians_ns": [
+          9172,
+          9013,
+          8977,
+          9588,
+          9115,
+          9998,
+          9148,
+          9070,
+          9104,
+          9495
+        ],
+        "candidate_summary": {
+          "mad_ns": 89,
+          "median_ns": 9131,
+          "observed_max_ns": 9998,
+          "upper_budget_ns": 9998
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "2d421a20c529a0a00303af9ee09c99be284d74aab3ef4b46999e1c89b5f41d42",
+        "pass": true,
+        "reference_definition_sha256": "2d421a20c529a0a00303af9ee09c99be284d74aab3ef4b46999e1c89b5f41d42",
+        "reference_errors": [],
+        "reference_median_ns": 9145,
+        "reference_outer_medians_ns": [
+          9120,
+          8951,
+          9214,
+          9213,
+          9120,
+          9242,
+          9187,
+          9096,
+          9070,
+          9170
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 10974
+      },
+      "proof_obligation_compile": {
+        "candidate_outer_medians_ns": [
+          18816,
+          17383,
+          18250,
+          18469,
+          17353,
+          18448,
+          19270,
+          18090,
+          17379,
+          17541
+        ],
+        "candidate_summary": {
+          "mad_ns": 637,
+          "median_ns": 18170,
+          "observed_max_ns": 19270,
+          "upper_budget_ns": 20081
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "54adfa2dbe849d490c5b5838457b9ec539ee1ab0e351d6926c0530faf712c401",
+        "pass": true,
+        "reference_definition_sha256": "54adfa2dbe849d490c5b5838457b9ec539ee1ab0e351d6926c0530faf712c401",
+        "reference_errors": [],
+        "reference_median_ns": 17737,
+        "reference_outer_medians_ns": [
+          17812,
+          17662,
+          17619,
+          18032,
+          17268,
+          18877,
+          18791,
+          17459,
+          17291,
+          18718
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 21285
+      },
+      "resource_lease_and_delegation": {
+        "candidate_outer_medians_ns": [
+          661,
+          652,
+          636,
+          755,
+          636,
+          634,
+          658,
+          634,
+          641,
+          640
+        ],
+        "candidate_summary": {
+          "mad_ns": 6,
+          "median_ns": 640,
+          "observed_max_ns": 755,
+          "upper_budget_ns": 755
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "d21fa45f27f72c5ea54ed1dc729aa54d6a40146678ddb3ef1d2f2fb5be705575",
+        "pass": true,
+        "reference_definition_sha256": "d21fa45f27f72c5ea54ed1dc729aa54d6a40146678ddb3ef1d2f2fb5be705575",
+        "reference_errors": [],
+        "reference_median_ns": 639,
+        "reference_outer_medians_ns": [
+          639,
+          636,
+          639,
+          640,
+          636,
+          643,
+          640,
+          640,
+          639,
+          639
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 767
+      },
+      "resource_usage_durable": {
+        "candidate_outer_medians_ns": [
+          4337576,
+          4499358,
+          4330985,
+          4926483,
+          4429038,
+          4698162,
+          4590757,
+          4568061,
+          4628740,
+          4726176
+        ],
+        "candidate_summary": {
+          "mad_ns": 132760,
+          "median_ns": 4579409,
+          "observed_max_ns": 4926483,
+          "upper_budget_ns": 4977689
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "79e6f96ca64002a3d01fc085b111cd3c280272c00c83b652ee102f4fa0f47f5e",
+        "pass": true,
+        "reference_definition_sha256": "79e6f96ca64002a3d01fc085b111cd3c280272c00c83b652ee102f4fa0f47f5e",
+        "reference_errors": [],
+        "reference_median_ns": 4593762,
+        "reference_outer_medians_ns": [
+          4680716,
+          4636996,
+          4157200,
+          4550528,
+          4747682,
+          4795662,
+          4509953,
+          4331662,
+          4408748,
+          4672695
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 5512515
+      },
+      "scheduler_owner_rotation_100": {
+        "candidate_outer_medians_ns": [
+          165,
+          144,
+          187,
+          200,
+          142,
+          164,
+          142,
+          141,
+          141,
+          136
+        ],
+        "candidate_summary": {
+          "mad_ns": 4,
+          "median_ns": 143,
+          "observed_max_ns": 200,
+          "upper_budget_ns": 200
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+        "pass": true,
+        "reference_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+        "reference_errors": [],
+        "reference_median_ns": 148,
+        "reference_outer_medians_ns": [
+          136,
+          144,
+          142,
+          152,
+          136,
+          195,
+          166,
+          173,
+          143,
+          156
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 178
+      },
+      "scheduler_owner_rotation_1000": {
+        "candidate_outer_medians_ns": [
+          220,
+          183,
+          232,
+          285,
+          184,
+          224,
+          222,
+          186,
+          199,
+          180
+        ],
+        "candidate_summary": {
+          "mad_ns": 23,
+          "median_ns": 209,
+          "observed_max_ns": 285,
+          "upper_budget_ns": 285
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+        "pass": true,
+        "reference_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+        "reference_errors": [],
+        "reference_median_ns": 195,
+        "reference_outer_medians_ns": [
+          187,
+          196,
+          184,
+          234,
+          182,
+          279,
+          222,
+          187,
+          200,
+          195
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 234
+      },
+      "scheduler_owner_rotation_10000": {
+        "candidate_outer_medians_ns": [
+          301,
+          270,
+          269,
+          358,
+          268,
+          309,
+          309,
+          280,
+          291,
+          289
+        ],
+        "candidate_summary": {
+          "mad_ns": 19,
+          "median_ns": 290,
+          "observed_max_ns": 358,
+          "upper_budget_ns": 358
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+        "pass": true,
+        "reference_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+        "reference_errors": [],
+        "reference_median_ns": 292,
+        "reference_outer_medians_ns": [
+          294,
+          291,
+          274,
+          314,
+          269,
+          297,
+          300,
+          271,
+          309,
+          278
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 351
+      },
+      "state_backup_restore": {
+        "candidate_outer_medians_ns": [
+          58780325,
+          69871075,
+          58939950,
+          64415475,
+          64541400,
+          60441400,
+          61347250,
+          61771900,
+          62311850,
+          64154525
+        ],
+        "candidate_summary": {
+          "mad_ns": 2243125,
+          "median_ns": 62041875,
+          "observed_max_ns": 69871075,
+          "upper_budget_ns": 69871075
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "dbac17a3832e66f0b02e0ccafb79c500bb315345670e0c4e1977168a97171b44",
+        "pass": true,
+        "reference_definition_sha256": "dbac17a3832e66f0b02e0ccafb79c500bb315345670e0c4e1977168a97171b44",
+        "reference_errors": [],
+        "reference_median_ns": 62145275,
+        "reference_outer_medians_ns": [
+          62399525,
+          64768000,
+          61762750,
+          63625800,
+          59918175,
+          64996550,
+          61891025,
+          67849875,
+          61108450,
+          60928525
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 74574330
+      },
+      "state_backup_snapshot": {
+        "candidate_outer_medians_ns": [
+          49680300,
+          55495100,
+          51466900,
+          57543000,
+          57005500,
+          57038300,
+          53981500,
+          56472900,
+          50962900,
+          56569600
+        ],
+        "candidate_summary": {
+          "mad_ns": 1306650,
+          "median_ns": 55984000,
+          "observed_max_ns": 57543000,
+          "upper_budget_ns": 59903950
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "c762bc01388c59b18a51ec5e9a422c5584875a601f7ba3e641feb19eea6077f4",
+        "pass": true,
+        "reference_definition_sha256": "c762bc01388c59b18a51ec5e9a422c5584875a601f7ba3e641feb19eea6077f4",
+        "reference_errors": [],
+        "reference_median_ns": 54025000,
+        "reference_outer_medians_ns": [
+          58307500,
+          55654100,
+          49389700,
+          55346100,
+          51303200,
+          49528000,
+          51343000,
+          52703900,
+          58653200,
+          61370000
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 64830000
+      },
+      "warm_native_boot": {
+        "candidate_outer_medians_ns": [
+          31191950,
+          26147120,
+          26275725,
+          31933990,
+          28806175,
+          27739310,
+          32970615,
+          36313325,
+          26069625,
+          31420070
+        ],
+        "candidate_summary": {
+          "mad_ns": 2615652,
+          "median_ns": 29999062,
+          "observed_max_ns": 36313325,
+          "upper_budget_ns": 37846018
+        },
+        "comparison_status": "frozen_candidate_reference",
+        "current_definition_sha256": "11c20947103e7a5c7c1212586d04496d798fdff0e597ae18c978b887dec93bb0",
+        "pass": true,
+        "reference_definition_sha256": "11c20947103e7a5c7c1212586d04496d798fdff0e597ae18c978b887dec93bb0",
+        "reference_errors": [],
+        "reference_median_ns": 28776600,
+        "reference_outer_medians_ns": [
+          29372765,
+          26647765,
+          27296020,
+          32460000,
+          30094235,
+          28180435,
+          30899095,
+          25679915,
+          26080360,
+          30534220
+        ],
+        "reference_valid": true,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 34531920
+      }
+    }
+  },
+  "candidate_only_workloads": {
+    "capability_registration": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        2387,
+        2302,
+        2286,
+        2584,
+        2334,
+        2278,
+        2267,
+        2268,
+        2220,
+        2252
+      ],
+      "candidate_summary": {
+        "mad_ns": 25,
+        "median_ns": 2282,
+        "observed_max_ns": 2584,
+        "upper_budget_ns": 2584
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "a3d0aa3dc68220d913f89106f49f3bb94e5c71169ace15acabfd616d3051095e",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          2276,
+          2309,
+          2252,
+          2300,
+          2321,
+          2278,
+          2254,
+          2369,
+          3847,
+          2377
+        ],
+        "baseline_summary": {
+          "mad_ns": 39,
+          "median_ns": 2304,
+          "observed_max_ns": 3847,
+          "upper_budget_ns": 3847
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": -0.98
+      },
+      "outer_medians_ns": [
+        2387,
+        2302,
+        2286,
+        2584,
+        2334,
+        2278,
+        2267,
+        2268,
+        2220,
+        2252
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 25,
+        "median_ns": 2282,
+        "observed_max_ns": 2584,
+        "upper_budget_ns": 2584
+      },
+      "reason": "C02 registered caller-asserted ConformancePassed/Ready values; the correction only permits public Declared/Unknown registration and records verified runtime evidence through a trusted path.",
+      "reference_definition_sha256": "a3d0aa3dc68220d913f89106f49f3bb94e5c71169ace15acabfd616d3051095e",
+      "reference_errors": [],
+      "reference_median_ns": 2322,
+      "reference_outer_medians_ns": [
+        2261,
+        2331,
+        2429,
+        2273,
+        2372,
+        2340,
+        2313,
+        2265,
+        2257,
+        2419
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 2787
+    },
+    "capability_resolution_one_candidate": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        1799,
+        1681,
+        1685,
+        1714,
+        1922,
+        1720,
+        1714,
+        1678,
+        1701,
+        1783
+      ],
+      "candidate_summary": {
+        "mad_ns": 31,
+        "median_ns": 1714,
+        "observed_max_ns": 1922,
+        "upper_budget_ns": 1922
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "5266096f8aca67e6acf9b50f61c1a40db747e9eec7d554b6cced6642b0f187df",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          1668,
+          1648,
+          1694,
+          1641,
+          1654,
+          1648,
+          1668,
+          1664,
+          1698,
+          2016
+        ],
+        "baseline_summary": {
+          "mad_ns": 18,
+          "median_ns": 1666,
+          "observed_max_ns": 2016,
+          "upper_budget_ns": 2016
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 2.88
+      },
+      "outer_medians_ns": [
+        1799,
+        1681,
+        1685,
+        1714,
+        1922,
+        1720,
+        1714,
+        1678,
+        1701,
+        1783
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 31,
+        "median_ns": 1714,
+        "observed_max_ns": 1922,
+        "upper_budget_ns": 1922
+      },
+      "reason": "C02 resolved a caller-asserted ConformancePassed/Ready candidate; the corrected public fixture is Declared/Unknown because callers can no longer assert provenance.",
+      "reference_definition_sha256": "5266096f8aca67e6acf9b50f61c1a40db747e9eec7d554b6cced6642b0f187df",
+      "reference_errors": [],
+      "reference_median_ns": 1712,
+      "reference_outer_medians_ns": [
+        1714,
+        1688,
+        1829,
+        1885,
+        1684,
+        1733,
+        1692,
+        1727,
+        1681,
+        1710
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 2055
+    },
+    "change_cone_10000_node_chain": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        11290950,
+        11209380,
+        10615055,
+        11241775,
+        10513570,
+        11080315,
+        11249780,
+        10526195,
+        11164605,
+        10582140
+      ],
+      "candidate_summary": {
+        "mad_ns": 147905,
+        "median_ns": 11122460,
+        "observed_max_ns": 11290950,
+        "upper_budget_ns": 11566175
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+      "outer_medians_ns": [
+        11290950,
+        11209380,
+        10615055,
+        11241775,
+        10513570,
+        11080315,
+        11249780,
+        10526195,
+        11164605,
+        10582140
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 147905,
+        "median_ns": 11122460,
+        "observed_max_ns": 11290950,
+        "upper_budget_ns": 11566175
+      },
+      "reason": "first measured in this correction",
+      "reference_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+      "reference_errors": [],
+      "reference_median_ns": 10612465,
+      "reference_outer_medians_ns": [
+        10777285,
+        10510955,
+        10595500,
+        11445665,
+        10477145,
+        11200440,
+        11479860,
+        10629430,
+        10577360,
+        10446615
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 12734958
+    },
+    "change_cone_1000_node_chain": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        833274,
+        687178,
+        682622,
+        737130,
+        689672,
+        740651,
+        732364,
+        753640,
+        694154,
+        690016
+      ],
+      "candidate_summary": {
+        "mad_ns": 24976,
+        "median_ns": 713259,
+        "observed_max_ns": 833274,
+        "upper_budget_ns": 833274
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+      "outer_medians_ns": [
+        833274,
+        687178,
+        682622,
+        737130,
+        689672,
+        740651,
+        732364,
+        753640,
+        694154,
+        690016
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 24976,
+        "median_ns": 713259,
+        "observed_max_ns": 833274,
+        "upper_budget_ns": 833274
+      },
+      "reason": "first measured in this correction",
+      "reference_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+      "reference_errors": [],
+      "reference_median_ns": 713053,
+      "reference_outer_medians_ns": [
+        824544,
+        729665,
+        692269,
+        868662,
+        698687,
+        776923,
+        727420,
+        675500,
+        687059,
+        679563
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 855664
+    },
+    "cold_native_boot": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        77599955,
+        76313780,
+        75668330,
+        79823785,
+        76661835,
+        78409750,
+        83576970,
+        74257585,
+        76480885,
+        77822310
+      ],
+      "candidate_summary": {
+        "mad_ns": 1047985,
+        "median_ns": 77130895,
+        "observed_max_ns": 83576970,
+        "upper_budget_ns": 83576970
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "c7fc18f60dfde6495d52f2ba65fc162a70abba6e96aba2e115077593a21e2857",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          50645255,
+          50402965,
+          50159450,
+          47497855,
+          44064900,
+          47179630,
+          49857710,
+          46958405,
+          48498075,
+          50224880
+        ],
+        "baseline_summary": {
+          "mad_ns": 1346218,
+          "median_ns": 49177892,
+          "observed_max_ns": 50645255,
+          "upper_budget_ns": 53216546
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 56.84
+      },
+      "outer_medians_ns": [
+        77599955,
+        76313780,
+        75668330,
+        79823785,
+        76661835,
+        78409750,
+        83576970,
+        74257585,
+        76480885,
+        77822310
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 1047985,
+        "median_ns": 77130895,
+        "observed_max_ns": 83576970,
+        "upper_budget_ns": 83576970
+      },
+      "reason": "The candidate includes schema-v4 shared-ledger and command-outcome integrity, trusted capability evidence, and expanded optional-service diagnostics absent from C02.",
+      "reference_definition_sha256": "c7fc18f60dfde6495d52f2ba65fc162a70abba6e96aba2e115077593a21e2857",
+      "reference_errors": [],
+      "reference_median_ns": 77554642,
+      "reference_outer_medians_ns": [
+        79110850,
+        79299820,
+        77279145,
+        78245030,
+        76382105,
+        77830140,
+        83126965,
+        77231230,
+        74506655,
+        77167235
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 93065571
+    },
+    "command_dispatch_local_mutation": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        15698426,
+        15482071,
+        15163095,
+        15659151,
+        15593691,
+        15386410,
+        15522394,
+        15571080,
+        15166708,
+        15882094
+      ],
+      "candidate_summary": {
+        "mad_ns": 132051,
+        "median_ns": 15546737,
+        "observed_max_ns": 15882094,
+        "upper_budget_ns": 15942890
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "7004a26cdcbedadd2135ed09910346eb6d6d02a8a05fd1d4dfd3ec2fac2c54ee",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          7603146,
+          7811383,
+          7308067,
+          7522212,
+          7551395,
+          7435322,
+          7595027,
+          7504340,
+          7544255,
+          7202333
+        ],
+        "baseline_summary": {
+          "mad_ns": 65853,
+          "median_ns": 7533233,
+          "observed_max_ns": 7811383,
+          "upper_budget_ns": 7811383
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 106.38
+      },
+      "outer_medians_ns": [
+        15698426,
+        15482071,
+        15163095,
+        15659151,
+        15593691,
+        15386410,
+        15522394,
+        15571080,
+        15166708,
+        15882094
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 132051,
+        "median_ns": 15546737,
+        "observed_max_ns": 15882094,
+        "upper_budget_ns": 15942890
+      },
+      "reason": "The candidate verifies and durably consumes a host-signed scoped decision, then commits state, outbox, and command receipt atomically; C02 did not perform these checks.",
+      "reference_definition_sha256": "7004a26cdcbedadd2135ed09910346eb6d6d02a8a05fd1d4dfd3ec2fac2c54ee",
+      "reference_errors": [],
+      "reference_median_ns": 15526585,
+      "reference_outer_medians_ns": [
+        15650364,
+        15357508,
+        15360729,
+        15598813,
+        15999412,
+        15222774,
+        15688404,
+        15081991,
+        15454358,
+        15873371
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 18631902
+    },
+    "ephemeral_event_fanout": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        1985,
+        1900,
+        1887,
+        2115,
+        1959,
+        2208,
+        1926,
+        1902,
+        1972,
+        2001
+      ],
+      "candidate_summary": {
+        "mad_ns": 51,
+        "median_ns": 1965,
+        "observed_max_ns": 2208,
+        "upper_budget_ns": 2208
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "3ff0a529255f8071472538d3a320873649a78a45f0b1bd7972710b1779e45974",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          814,
+          1082,
+          1427,
+          858,
+          1019,
+          795,
+          803,
+          837,
+          814,
+          1076
+        ],
+        "baseline_summary": {
+          "mad_ns": 48,
+          "median_ns": 847,
+          "observed_max_ns": 1427,
+          "upper_budget_ns": 1427
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 131.92
+      },
+      "outer_medians_ns": [
+        1985,
+        1900,
+        1887,
+        2115,
+        1959,
+        2208,
+        1926,
+        1902,
+        1972,
+        2001
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 51,
+        "median_ns": 1965,
+        "observed_max_ns": 2208,
+        "upper_budget_ns": 2208
+      },
+      "reason": "The candidate validates every event payload with the bounded secret filter before fanout; C02 did not perform this validation.",
+      "reference_definition_sha256": "3ff0a529255f8071472538d3a320873649a78a45f0b1bd7972710b1779e45974",
+      "reference_errors": [],
+      "reference_median_ns": 1916,
+      "reference_outer_medians_ns": [
+        1923,
+        1910,
+        1888,
+        2086,
+        1881,
+        1947,
+        2179,
+        1889,
+        1896,
+        1960
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 2300
+    },
+    "git_exact_change_assessment": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        419894700,
+        368466900,
+        369187100,
+        413881000,
+        364231300,
+        409749950,
+        420331650,
+        362938250,
+        363353600,
+        413028450
+      ],
+      "candidate_summary": {
+        "mad_ns": 24824850,
+        "median_ns": 389468525,
+        "observed_max_ns": 420331650,
+        "upper_budget_ns": 463943075
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "3259e029e38786794d5b22c989ae770f572ba2d2333f3d82ada90a1bbd424be7",
+      "outer_medians_ns": [
+        419894700,
+        368466900,
+        369187100,
+        413881000,
+        364231300,
+        409749950,
+        420331650,
+        362938250,
+        363353600,
+        413028450
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 24824850,
+        "median_ns": 389468525,
+        "observed_max_ns": 420331650,
+        "upper_budget_ns": 463943075
+      },
+      "reason": "first measured in this correction",
+      "reference_definition_sha256": "3259e029e38786794d5b22c989ae770f572ba2d2333f3d82ada90a1bbd424be7",
+      "reference_errors": [],
+      "reference_median_ns": 381867125,
+      "reference_outer_medians_ns": [
+        398585150,
+        362589000,
+        358207100,
+        408287200,
+        365149100,
+        424421800,
+        404836250,
+        361166150,
+        361603650,
+        409291650
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 458240550
+    },
+    "proof_minimal_selection": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        9172,
+        9013,
+        8977,
+        9588,
+        9115,
+        9998,
+        9148,
+        9070,
+        9104,
+        9495
+      ],
+      "candidate_summary": {
+        "mad_ns": 89,
+        "median_ns": 9131,
+        "observed_max_ns": 9998,
+        "upper_budget_ns": 9998
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "2d421a20c529a0a00303af9ee09c99be284d74aab3ef4b46999e1c89b5f41d42",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          1438,
+          1428,
+          1475,
+          1415,
+          1413,
+          1455,
+          1426,
+          1421,
+          1453,
+          1481
+        ],
+        "baseline_summary": {
+          "mad_ns": 19,
+          "median_ns": 1433,
+          "observed_max_ns": 1481,
+          "upper_budget_ns": 1490
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 537.23
+      },
+      "outer_medians_ns": [
+        9172,
+        9013,
+        8977,
+        9588,
+        9115,
+        9998,
+        9148,
+        9070,
+        9104,
+        9495
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 89,
+        "median_ns": 9131,
+        "observed_max_ns": 9998,
+        "upper_budget_ns": 9998
+      },
+      "reason": "C02 selected caller-asserted unsigned Passed nodes; the candidate verifies a backend-authenticated receipt bound to the exact proof and change set.",
+      "reference_definition_sha256": "2d421a20c529a0a00303af9ee09c99be284d74aab3ef4b46999e1c89b5f41d42",
+      "reference_errors": [],
+      "reference_median_ns": 9145,
+      "reference_outer_medians_ns": [
+        9120,
+        8951,
+        9214,
+        9213,
+        9120,
+        9242,
+        9187,
+        9096,
+        9070,
+        9170
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 10974
+    },
+    "proof_obligation_compile": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        18816,
+        17383,
+        18250,
+        18469,
+        17353,
+        18448,
+        19270,
+        18090,
+        17379,
+        17541
+      ],
+      "candidate_summary": {
+        "mad_ns": 637,
+        "median_ns": 18170,
+        "observed_max_ns": 19270,
+        "upper_budget_ns": 20081
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "54adfa2dbe849d490c5b5838457b9ec539ee1ab0e351d6926c0530faf712c401",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          1114,
+          1185,
+          1172,
+          1139,
+          1113,
+          1122,
+          1119,
+          1220,
+          1131,
+          1201
+        ],
+        "baseline_summary": {
+          "mad_ns": 21,
+          "median_ns": 1135,
+          "observed_max_ns": 1220,
+          "upper_budget_ns": 1220
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 1500.88
+      },
+      "outer_medians_ns": [
+        18816,
+        17383,
+        18250,
+        18469,
+        17353,
+        18448,
+        19270,
+        18090,
+        17379,
+        17541
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 637,
+        "median_ns": 18170,
+        "observed_max_ns": 19270,
+        "upper_budget_ns": 20081
+      },
+      "reason": "C02 compiled a caller-constructed assessment; the candidate derives changed paths from Git and conservatively derives obligations.",
+      "reference_definition_sha256": "54adfa2dbe849d490c5b5838457b9ec539ee1ab0e351d6926c0530faf712c401",
+      "reference_errors": [],
+      "reference_median_ns": 17737,
+      "reference_outer_medians_ns": [
+        17812,
+        17662,
+        17619,
+        18032,
+        17268,
+        18877,
+        18791,
+        17459,
+        17291,
+        18718
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 21285
+    },
+    "resource_lease_and_delegation": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        661,
+        652,
+        636,
+        755,
+        636,
+        634,
+        658,
+        634,
+        641,
+        640
+      ],
+      "candidate_summary": {
+        "mad_ns": 6,
+        "median_ns": 640,
+        "observed_max_ns": 755,
+        "upper_budget_ns": 755
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "d21fa45f27f72c5ea54ed1dc729aa54d6a40146678ddb3ef1d2f2fb5be705575",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          447,
+          443,
+          455,
+          453,
+          441,
+          448,
+          447,
+          474,
+          463,
+          467
+        ],
+        "baseline_summary": {
+          "mad_ns": 6,
+          "median_ns": 450,
+          "observed_max_ns": 474,
+          "upper_budget_ns": 474
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 42.18
+      },
+      "outer_medians_ns": [
+        661,
+        652,
+        636,
+        755,
+        636,
+        634,
+        658,
+        634,
+        641,
+        640
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 6,
+        "median_ns": 640,
+        "observed_max_ns": 755,
+        "upper_budget_ns": 755
+      },
+      "reason": "The candidate adds bounded monotonic TTL and expiry reclamation to lease creation and delegation. The measured operation does not wait for expiry or exercise reclamation, so its result is a candidate lease/delegation baseline and is not comparable to the earlier implementation.",
+      "reference_definition_sha256": "d21fa45f27f72c5ea54ed1dc729aa54d6a40146678ddb3ef1d2f2fb5be705575",
+      "reference_errors": [],
+      "reference_median_ns": 639,
+      "reference_outer_medians_ns": [
+        639,
+        636,
+        639,
+        640,
+        636,
+        643,
+        640,
+        640,
+        639,
+        639
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 767
+    },
+    "scheduler_owner_rotation_100": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        165,
+        144,
+        187,
+        200,
+        142,
+        164,
+        142,
+        141,
+        141,
+        136
+      ],
+      "candidate_summary": {
+        "mad_ns": 4,
+        "median_ns": 143,
+        "observed_max_ns": 200,
+        "upper_budget_ns": 200
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+      "outer_medians_ns": [
+        165,
+        144,
+        187,
+        200,
+        142,
+        164,
+        142,
+        141,
+        141,
+        136
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 4,
+        "median_ns": 143,
+        "observed_max_ns": 200,
+        "upper_budget_ns": 200
+      },
+      "reason": "first measured in this correction",
+      "reference_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+      "reference_errors": [],
+      "reference_median_ns": 148,
+      "reference_outer_medians_ns": [
+        136,
+        144,
+        142,
+        152,
+        136,
+        195,
+        166,
+        173,
+        143,
+        156
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 178
+    },
+    "scheduler_owner_rotation_1000": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        220,
+        183,
+        232,
+        285,
+        184,
+        224,
+        222,
+        186,
+        199,
+        180
+      ],
+      "candidate_summary": {
+        "mad_ns": 23,
+        "median_ns": 209,
+        "observed_max_ns": 285,
+        "upper_budget_ns": 285
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+      "outer_medians_ns": [
+        220,
+        183,
+        232,
+        285,
+        184,
+        224,
+        222,
+        186,
+        199,
+        180
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 23,
+        "median_ns": 209,
+        "observed_max_ns": 285,
+        "upper_budget_ns": 285
+      },
+      "reason": "first measured in this correction",
+      "reference_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+      "reference_errors": [],
+      "reference_median_ns": 195,
+      "reference_outer_medians_ns": [
+        187,
+        196,
+        184,
+        234,
+        182,
+        279,
+        222,
+        187,
+        200,
+        195
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 234
+    },
+    "scheduler_owner_rotation_10000": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        301,
+        270,
+        269,
+        358,
+        268,
+        309,
+        309,
+        280,
+        291,
+        289
+      ],
+      "candidate_summary": {
+        "mad_ns": 19,
+        "median_ns": 290,
+        "observed_max_ns": 358,
+        "upper_budget_ns": 358
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+      "outer_medians_ns": [
+        301,
+        270,
+        269,
+        358,
+        268,
+        309,
+        309,
+        280,
+        291,
+        289
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 19,
+        "median_ns": 290,
+        "observed_max_ns": 358,
+        "upper_budget_ns": 358
+      },
+      "reason": "first measured in this correction",
+      "reference_definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+      "reference_errors": [],
+      "reference_median_ns": 292,
+      "reference_outer_medians_ns": [
+        294,
+        291,
+        274,
+        314,
+        269,
+        297,
+        300,
+        271,
+        309,
+        278
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 351
+    },
+    "state_backup_restore": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        58780325,
+        69871075,
+        58939950,
+        64415475,
+        64541400,
+        60441400,
+        61347250,
+        61771900,
+        62311850,
+        64154525
+      ],
+      "candidate_summary": {
+        "mad_ns": 2243125,
+        "median_ns": 62041875,
+        "observed_max_ns": 69871075,
+        "upper_budget_ns": 69871075
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "dbac17a3832e66f0b02e0ccafb79c500bb315345670e0c4e1977168a97171b44",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          38293125,
+          36802425,
+          35210650,
+          35163475,
+          38485500,
+          32757400,
+          36491700,
+          36483500,
+          34255875,
+          33173600
+        ],
+        "baseline_summary": {
+          "mad_ns": 1273275,
+          "median_ns": 35847075,
+          "observed_max_ns": 38485500,
+          "upper_budget_ns": 39666900
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 73.07
+      },
+      "outer_medians_ns": [
+        58780325,
+        69871075,
+        58939950,
+        64415475,
+        64541400,
+        60441400,
+        61347250,
+        61771900,
+        62311850,
+        64154525
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 2243125,
+        "median_ns": 62041875,
+        "observed_max_ns": 69871075,
+        "upper_budget_ns": 69871075
+      },
+      "reason": "The candidate restore path validates bounded secret-safe payloads and schema-v4 shared-ledger and outcome-resolution state; C02 restored the earlier state format and invariants.",
+      "reference_definition_sha256": "dbac17a3832e66f0b02e0ccafb79c500bb315345670e0c4e1977168a97171b44",
+      "reference_errors": [],
+      "reference_median_ns": 62145275,
+      "reference_outer_medians_ns": [
+        62399525,
+        64768000,
+        61762750,
+        63625800,
+        59918175,
+        64996550,
+        61891025,
+        67849875,
+        61108450,
+        60928525
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 74574330
+    },
+    "state_backup_snapshot": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        49680300,
+        55495100,
+        51466900,
+        57543000,
+        57005500,
+        57038300,
+        53981500,
+        56472900,
+        50962900,
+        56569600
+      ],
+      "candidate_summary": {
+        "mad_ns": 1306650,
+        "median_ns": 55984000,
+        "observed_max_ns": 57543000,
+        "upper_budget_ns": 59903950
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "c762bc01388c59b18a51ec5e9a422c5584875a601f7ba3e641feb19eea6077f4",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          43443600,
+          40914700,
+          43764200,
+          39747100,
+          39316800,
+          35005100,
+          40222100,
+          37275800,
+          37934600,
+          38852600
+        ],
+        "baseline_summary": {
+          "mad_ns": 1490050,
+          "median_ns": 39531950,
+          "observed_max_ns": 43764200,
+          "upper_budget_ns": 44002100
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 41.62
+      },
+      "outer_medians_ns": [
+        49680300,
+        55495100,
+        51466900,
+        57543000,
+        57005500,
+        57038300,
+        53981500,
+        56472900,
+        50962900,
+        56569600
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 1306650,
+        "median_ns": 55984000,
+        "observed_max_ns": 57543000,
+        "upper_budget_ns": 59903950
+      },
+      "reason": "The candidate snapshot includes schema-v4 owner, shared-ledger, authorization, and outcome-resolution tables plus their integrity state; C02 used the earlier schema and data shape.",
+      "reference_definition_sha256": "c762bc01388c59b18a51ec5e9a422c5584875a601f7ba3e641feb19eea6077f4",
+      "reference_errors": [],
+      "reference_median_ns": 54025000,
+      "reference_outer_medians_ns": [
+        58307500,
+        55654100,
+        49389700,
+        55346100,
+        51303200,
+        49528000,
+        51343000,
+        52703900,
+        58653200,
+        61370000
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 64830000
+    },
+    "warm_native_boot": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        31191950,
+        26147120,
+        26275725,
+        31933990,
+        28806175,
+        27739310,
+        32970615,
+        36313325,
+        26069625,
+        31420070
+      ],
+      "candidate_summary": {
+        "mad_ns": 2615652,
+        "median_ns": 29999062,
+        "observed_max_ns": 36313325,
+        "upper_budget_ns": 37846018
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "11c20947103e7a5c7c1212586d04496d798fdff0e597ae18c978b887dec93bb0",
+      "historical_reference": {
+        "baseline_outer_medians_ns": [
+          26594125,
+          24111050,
+          23812080,
+          24272920,
+          21069785,
+          21995010,
+          24945645,
+          26075635,
+          24061215,
+          24237815
+        ],
+        "baseline_summary": {
+          "mad_ns": 566782,
+          "median_ns": 24174432,
+          "observed_max_ns": 26594125,
+          "upper_budget_ns": 26594125
+        },
+        "interpretation": "reported for context only; workload semantics differ",
+        "median_change_percent": 24.09
+      },
+      "outer_medians_ns": [
+        31191950,
+        26147120,
+        26275725,
+        31933990,
+        28806175,
+        27739310,
+        32970615,
+        36313325,
+        26069625,
+        31420070
+      ],
+      "pass": true,
+      "proposed_candidate_budget": {
+        "mad_ns": 2615652,
+        "median_ns": 29999062,
+        "observed_max_ns": 36313325,
+        "upper_budget_ns": 37846018
+      },
+      "reason": "The candidate includes schema-v4 shared-ledger and command-outcome integrity, owner heartbeat/recovery, trusted capability evidence, and expanded optional-service diagnostics absent from C02.",
+      "reference_definition_sha256": "11c20947103e7a5c7c1212586d04496d798fdff0e597ae18c978b887dec93bb0",
+      "reference_errors": [],
+      "reference_median_ns": 28776600,
+      "reference_outer_medians_ns": [
+        29372765,
+        26647765,
+        27296020,
+        32460000,
+        30094235,
+        28180435,
+        30899095,
+        25679915,
+        26080360,
+        30534220
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 34531920
+    }
+  },
+  "candidate_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+  "candidate_worktree_clean": true,
+  "common_workload_comparison": {
+    "blake3_1k": {
+      "baseline_budget": {
+        "baseline_median_ns": 1043,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 1252
+      },
+      "baseline_outer_medians_ns": [
+        1040,
+        1039,
+        1087,
+        1040,
+        1080,
+        1035,
+        1047,
+        1039,
+        1078,
+        1059
+      ],
+      "candidate_outer_medians_ns": [
+        1040,
+        1038,
+        1035,
+        1041,
+        1036,
+        1048,
+        1040,
+        1036,
+        1036,
+        1036
+      ],
+      "candidate_summary": {
+        "mad_ns": 1,
+        "median_ns": 1037,
+        "observed_max_ns": 1048,
+        "upper_budget_ns": 1048
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "f597c41962978598e94cb4b7a3e92c5de2063fbad019f9a5180ec0abaa49eddf",
+        "candidate_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "f597c41962978598e94cb4b7a3e92c5de2063fbad019f9a5180ec0abaa49eddf",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "cancellation_lineage_check": {
+      "baseline_budget": {
+        "baseline_median_ns": 32,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 39
+      },
+      "baseline_outer_medians_ns": [
+        32,
+        32,
+        32,
+        32,
+        32,
+        32,
+        31,
+        32,
+        32,
+        32
+      ],
+      "candidate_outer_medians_ns": [
+        32,
+        32,
+        31,
+        32,
+        31,
+        31,
+        30,
+        31,
+        32,
+        32
+      ],
+      "candidate_summary": {
+        "mad_ns": 1,
+        "median_ns": 31,
+        "observed_max_ns": 32,
+        "upper_budget_ns": 34
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "af4c3aaaa99ad3a864588b67309fa5dc3591ee2a14c6373a9e7989d394264a53",
+        "candidate_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "af4c3aaaa99ad3a864588b67309fa5dc3591ee2a14c6373a9e7989d394264a53",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "cancellation_parent_to_child": {
+      "baseline_budget": {
+        "baseline_median_ns": 802,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 963
+      },
+      "baseline_outer_medians_ns": [
+        794,
+        802,
+        901,
+        813,
+        793,
+        793,
+        794,
+        819,
+        803,
+        822
+      ],
+      "candidate_outer_medians_ns": [
+        803,
+        801,
+        789,
+        805,
+        800,
+        813,
+        803,
+        797,
+        806,
+        803
+      ],
+      "candidate_summary": {
+        "mad_ns": 2,
+        "median_ns": 803,
+        "observed_max_ns": 813,
+        "upper_budget_ns": 813
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "4138192c39a7c688b34372f869c3f24a542d41cb31d5e4b5ed0fd8f8ac75c3d2",
+        "candidate_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "4138192c39a7c688b34372f869c3f24a542d41cb31d5e4b5ed0fd8f8ac75c3d2",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "contract_compile": {
+      "baseline_budget": {
+        "baseline_median_ns": 12108,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 14530
+      },
+      "baseline_outer_medians_ns": [
+        12797,
+        11915,
+        11798,
+        13027,
+        12397,
+        11651,
+        11488,
+        11804,
+        12666,
+        12301
+      ],
+      "candidate_outer_medians_ns": [
+        11726,
+        11606,
+        11359,
+        12611,
+        11646,
+        12436,
+        11897,
+        11400,
+        11489,
+        14250
+      ],
+      "candidate_summary": {
+        "mad_ns": 248,
+        "median_ns": 11686,
+        "observed_max_ns": 14250,
+        "upper_budget_ns": 14250
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "503a1468c602b587c36121f8dcca2a524baec590995c0447c759b892d0625e5b",
+        "candidate_iterations_per_sample": [
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "503a1468c602b587c36121f8dcca2a524baec590995c0447c759b892d0625e5b",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "contract_validate": {
+      "baseline_budget": {
+        "baseline_median_ns": 117,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 141
+      },
+      "baseline_outer_medians_ns": [
+        121,
+        108,
+        118,
+        107,
+        120,
+        118,
+        116,
+        109,
+        117,
+        171
+      ],
+      "candidate_outer_medians_ns": [
+        115,
+        117,
+        117,
+        117,
+        117,
+        118,
+        116,
+        115,
+        115,
+        154
+      ],
+      "candidate_summary": {
+        "mad_ns": 1,
+        "median_ns": 117,
+        "observed_max_ns": 154,
+        "upper_budget_ns": 154
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "88d7b05beebe501ac5db30e8f033eb918e5e2f80813af484745ce10174ace866",
+        "candidate_iterations_per_sample": [
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "88d7b05beebe501ac5db30e8f033eb918e5e2f80813af484745ce10174ace866",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "durable_event_outbox": {
+      "baseline_budget": {
+        "baseline_median_ns": 3970245,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 4764294
+      },
+      "baseline_outer_medians_ns": [
+        4137880,
+        3993365,
+        3845202,
+        3791618,
+        3668694,
+        4063748,
+        4093921,
+        3947126,
+        3888152,
+        4110074
+      ],
+      "candidate_outer_medians_ns": [
+        4443837,
+        4058797,
+        4223959,
+        4480060,
+        4275589,
+        4203590,
+        4366850,
+        4439607,
+        4123777,
+        4524302
+      ],
+      "candidate_summary": {
+        "mad_ns": 120503,
+        "median_ns": 4321219,
+        "observed_max_ns": 4524302,
+        "upper_budget_ns": 4682728
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "d31b0dd90af09709cdb9e5981be47a90764c709eca1053fd66da77d17d93cd64",
+        "candidate_iterations_per_sample": [
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "d31b0dd90af09709cdb9e5981be47a90764c709eca1053fd66da77d17d93cd64",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "readiness_query_one_check": {
+      "baseline_budget": {
+        "baseline_median_ns": 2110,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 2532
+      },
+      "baseline_outer_medians_ns": [
+        2106,
+        2115,
+        2471,
+        2174,
+        2061,
+        2086,
+        2064,
+        2173,
+        2100,
+        2119
+      ],
+      "candidate_outer_medians_ns": [
+        859,
+        814,
+        816,
+        962,
+        851,
+        857,
+        820,
+        817,
+        817,
+        816
+      ],
+      "candidate_summary": {
+        "mad_ns": 3,
+        "median_ns": 818,
+        "observed_max_ns": 962,
+        "upper_budget_ns": 962
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "0f1039ea537060fdb322339156e7d952b48d9d7a104119ba1ddc6eb8c0acd770",
+        "candidate_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "0f1039ea537060fdb322339156e7d952b48d9d7a104119ba1ddc6eb8c0acd770",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "runtime_start_and_shutdown": {
+      "baseline_budget": {
+        "baseline_median_ns": 232917,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 279501
+      },
+      "baseline_outer_medians_ns": [
+        222090,
+        236505,
+        324805,
+        241460,
+        179845,
+        173410,
+        179450,
+        240375,
+        241620,
+        229330
+      ],
+      "candidate_outer_medians_ns": [
+        214130,
+        177735,
+        177610,
+        274980,
+        225090,
+        266260,
+        236255,
+        192265,
+        196125,
+        221155
+      ],
+      "candidate_summary": {
+        "mad_ns": 23447,
+        "median_ns": 217642,
+        "observed_max_ns": 274980,
+        "upper_budget_ns": 287983
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "b100e8c810a775d14857dc84acccce2212007054bdf9f39f1d7935e89f582cf5",
+        "candidate_iterations_per_sample": [
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "b100e8c810a775d14857dc84acccce2212007054bdf9f39f1d7935e89f582cf5",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "semantic_cache_lookup": {
+      "baseline_budget": {
+        "baseline_median_ns": 54983,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 65980
+      },
+      "baseline_outer_medians_ns": [
+        56666,
+        71345,
+        55476,
+        54774,
+        36011,
+        37013,
+        54256,
+        53497,
+        55192,
+        56117
+      ],
+      "candidate_outer_medians_ns": [
+        57010,
+        42477,
+        38542,
+        65289,
+        53565,
+        63373,
+        57392,
+        43197,
+        34214,
+        72233
+      ],
+      "candidate_summary": {
+        "mad_ns": 11046,
+        "median_ns": 55287,
+        "observed_max_ns": 72233,
+        "upper_budget_ns": 88425
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "f65ce81c61d785e02b00ac1cca685adfbeb874336ab6233ad530da64ccb7b786",
+        "candidate_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "f65ce81c61d785e02b00ac1cca685adfbeb874336ab6233ad530da64ccb7b786",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "state_read": {
+      "baseline_budget": {
+        "baseline_median_ns": 44774,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 53729
+      },
+      "baseline_outer_medians_ns": [
+        45145,
+        46739,
+        55308,
+        38236,
+        29298,
+        30884,
+        43518,
+        69890,
+        44403,
+        45846
+      ],
+      "candidate_outer_medians_ns": [
+        46219,
+        37013,
+        33961,
+        49042,
+        45870,
+        49373,
+        52076,
+        34814,
+        37680,
+        47249
+      ],
+      "candidate_summary": {
+        "mad_ns": 4680,
+        "median_ns": 46044,
+        "observed_max_ns": 52076,
+        "upper_budget_ns": 60084
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "0f809da0bcac72efd75955004e524a1199924bc931cca288a2cb5dc430933e0f",
+        "candidate_iterations_per_sample": [
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000,
+          2000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "0f809da0bcac72efd75955004e524a1199924bc931cca288a2cb5dc430933e0f",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "state_transaction_write": {
+      "baseline_budget": {
+        "baseline_median_ns": 3568095,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 4281714
+      },
+      "baseline_outer_medians_ns": [
+        3500540,
+        3724197,
+        3650759,
+        3497014,
+        3503833,
+        3534428,
+        3494081,
+        3665325,
+        3601763,
+        3758930
+      ],
+      "candidate_outer_medians_ns": [
+        3726883,
+        3502875,
+        3469093,
+        3645363,
+        3649272,
+        3622570,
+        3589642,
+        3440405,
+        3610604,
+        3673403
+      ],
+      "candidate_summary": {
+        "mad_ns": 44750,
+        "median_ns": 3616587,
+        "observed_max_ns": 3726883,
+        "upper_budget_ns": 3750837
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "e7038114650743a567ccc123ce918a084b80dc2c854e03bc2fb42cc4e61969d0",
+        "candidate_iterations_per_sample": [
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400,
+          400
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "e7038114650743a567ccc123ce918a084b80dc2c854e03bc2fb42cc4e61969d0",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "telemetry_observation": {
+      "baseline_budget": {
+        "baseline_median_ns": 77,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 93
+      },
+      "baseline_outer_medians_ns": [
+        77,
+        73,
+        87,
+        77,
+        78,
+        78,
+        76,
+        76,
+        76,
+        77
+      ],
+      "candidate_outer_medians_ns": [
+        73,
+        72,
+        73,
+        91,
+        72,
+        73,
+        72,
+        71,
+        72,
+        78
+      ],
+      "candidate_summary": {
+        "mad_ns": 1,
+        "median_ns": 72,
+        "observed_max_ns": 91,
+        "upper_budget_ns": 91
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "d59ca397e11d4e57ddccf9d6775cd0b55f8b37b368dd44c57aefbf37f269fe63",
+        "candidate_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "d59ca397e11d4e57ddccf9d6775cd0b55f8b37b368dd44c57aefbf37f269fe63",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    },
+    "typed_content_fingerprint_1k": {
+      "baseline_budget": {
+        "baseline_median_ns": 1201,
+        "relative_allowance_percent": 20,
+        "upper_budget_ns": 1442
+      },
+      "baseline_outer_medians_ns": [
+        1173,
+        1173,
+        1224,
+        1171,
+        1214,
+        1245,
+        1189,
+        1170,
+        1258,
+        1258
+      ],
+      "candidate_outer_medians_ns": [
+        1175,
+        1164,
+        1163,
+        1168,
+        1215,
+        1232,
+        1167,
+        1163,
+        1163,
+        1193
+      ],
+      "candidate_summary": {
+        "mad_ns": 4,
+        "median_ns": 1167,
+        "observed_max_ns": 1232,
+        "upper_budget_ns": 1232
+      },
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "96984fa4e905199419e3e5f7bbb58f29fc3f13332f5fdfe87657e4f7ae31af78",
+        "candidate_iterations_per_sample": [
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000,
+          20000
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "96984fa4e905199419e3e5f7bbb58f29fc3f13332f5fdfe87657e4f7ae31af78",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": true
+      },
+      "pass": true
+    }
+  },
+  "environment": {
+    "architecture": "AMD64",
+    "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "idle_memory_measurement": "windows_process_working_set_bytes",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 23 Model 96 Stepping 1, AuthenticAMD",
+    "rustc_vv": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.1\nLLVM version: 22.1.8"
+  },
+  "execution_order": "baseline first on odd-numbered pairs; candidate first on even-numbered pairs",
+  "failures": [],
+  "idle_memory_comparison": {
+    "baseline_median_peak_bytes": 7667712,
+    "baseline_outer_peak_bytes": [
+      7684096,
+      7663616,
+      7667712,
+      7671808,
+      7675904,
+      7667712,
+      7667712,
+      7680000,
+      7663616,
+      7659520
+    ],
+    "baseline_schema_versions": [
+      2
+    ],
+    "candidate_mad_peak_bytes": 14336,
+    "candidate_max_peak_bytes": 8228864,
+    "candidate_median_peak_bytes": 8198144,
+    "candidate_outer_peak_bytes": [
+      8200192,
+      8192000,
+      8192000,
+      8224768,
+      8163328,
+      8196096,
+      8183808,
+      8228864,
+      8224768,
+      8212480
+    ],
+    "candidate_schema_versions": [
+      7
+    ],
+    "interval_ms": 500,
+    "measurement": "windows_process_working_set_bytes",
+    "outer_runs": 10,
+    "pass": true,
+    "relative_allowance_percent": 20,
+    "samples_per_process": 5,
+    "scope": "same-host paired regression budget; not an external memory SLO",
+    "upper_budget_bytes": 9201255
+  },
+  "inner_samples_per_workload": 5,
+  "measurement_time_utc": "2026-09-27T04:47:46.640060+00:00",
+  "non_comparable_workloads": {
+    "change_cone_100_node_chain": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        48504,
+        47681,
+        47695,
+        48684,
+        48839,
+        50098,
+        48258,
+        48499,
+        48198,
+        50344
+      ],
+      "candidate_summary": {
+        "mad_ns": 320,
+        "median_ns": 48501,
+        "observed_max_ns": 50344,
+        "upper_budget_ns": 50344
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000,
+          4000
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "1c3b993481d42178d76476d065f82d9a55661690ac5a3b9bff1790cd7e47a4a4",
+        "candidate_iterations_per_sample": [
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+        "iterations_match_per_pair": false,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": false
+      },
+      "pass": true,
+      "reason": "baseline and candidate workload definition, operation count, or inner sample count differs",
+      "reference_definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+      "reference_errors": [],
+      "reference_median_ns": 48866,
+      "reference_outer_medians_ns": [
+        51396,
+        48604,
+        48888,
+        51179,
+        48626,
+        51341,
+        48430,
+        48006,
+        48844,
+        50539
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 58640
+    },
+    "resource_usage_durable": {
+      "acceptance_status": "PASS against frozen candidate reference",
+      "candidate_outer_medians_ns": [
+        4337576,
+        4499358,
+        4330985,
+        4926483,
+        4429038,
+        4698162,
+        4590757,
+        4568061,
+        4628740,
+        4726176
+      ],
+      "candidate_summary": {
+        "mad_ns": 132760,
+        "median_ns": 4579409,
+        "observed_max_ns": 4926483,
+        "upper_budget_ns": 4977689
+      },
+      "comparison_status": "frozen_candidate_reference",
+      "current_definition_sha256": "79e6f96ca64002a3d01fc085b111cd3c280272c00c83b652ee102f4fa0f47f5e",
+      "harness_parity": {
+        "baseline_iterations_per_sample": [
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200
+        ],
+        "baseline_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "baseline_workload_definition_sha256": "fe8dc9fc2d0e5e191f57afb5965b83bcfdd5ad6683aff9c858355dd53becadde",
+        "candidate_iterations_per_sample": [
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200,
+          200
+        ],
+        "candidate_samples_per_outer_run": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "candidate_workload_definition_sha256": "79e6f96ca64002a3d01fc085b111cd3c280272c00c83b652ee102f4fa0f47f5e",
+        "iterations_match_per_pair": true,
+        "samples_match_per_pair": true,
+        "source_files": {
+          "baseline": {
+            "evidence_file": "performance-final-e1da083.baseline-2f95efd.rs",
+            "git_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0a0c3b53effb4cabbc00503cfd25b27e13c1ad1cdab380ba85c4245557265683"
+          },
+          "candidate": {
+            "evidence_file": "performance-final-e1da083.candidate-e1da083.rs",
+            "git_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+            "path": "crates/forge-kernel/benches/m00_baselines.rs",
+            "sha256": "0894d35e970ab787ac3d7a11f1ca12d0b4fba0047d148161ce8d979b3254d3f7"
+          }
+        },
+        "workload_definitions_match": false
+      },
+      "pass": true,
+      "reason": "baseline and candidate workload definition, operation count, or inner sample count differs",
+      "reference_definition_sha256": "79e6f96ca64002a3d01fc085b111cd3c280272c00c83b652ee102f4fa0f47f5e",
+      "reference_errors": [],
+      "reference_median_ns": 4593762,
+      "reference_outer_medians_ns": [
+        4680716,
+        4636996,
+        4157200,
+        4550528,
+        4747682,
+        4795662,
+        4509953,
+        4331662,
+        4408748,
+        4672695
+      ],
+      "reference_valid": true,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 5512515
+    }
+  },
+  "outer_runs": 10,
+  "scaling_checks": {
+    "change_cone_ns_per_node": {
+      "limit": 3.0,
+      "max_to_min_ratio": 2.293243438279623,
+      "pass": true,
+      "values": {
+        "100": 485.01,
+        "1000": 713.259,
+        "10000": 1112.246
+      }
+    },
+    "resource_usage_ns_per_write_by_ledger_cardinality": {
+      "intervals": [
+        {
+          "cardinality_end": 200,
+          "cardinality_start": 0,
+          "outer_medians_ns_per_operation": [
+            4617692,
+            4584564,
+            4026397,
+            4929554,
+            4429038,
+            4929270,
+            4525045,
+            4903086,
+            4471502,
+            4726176
+          ],
+          "summary": {
+            "mad_ns": 150858,
+            "median_ns": 4601128,
+            "observed_max_ns": 4929554,
+            "upper_budget_ns": 5053702
+          }
+        },
+        {
+          "cardinality_end": 400,
+          "cardinality_start": 200,
+          "outer_medians_ns_per_operation": [
+            4109481,
+            4180214,
+            4642136,
+            5307301,
+            4311904,
+            4698162,
+            4603169,
+            4432238,
+            4893899,
+            4241853
+          ],
+          "summary": {
+            "mad_ns": 240824,
+            "median_ns": 4517703,
+            "observed_max_ns": 5307301,
+            "upper_budget_ns": 5307301
+          }
+        },
+        {
+          "cardinality_end": 600,
+          "cardinality_start": 400,
+          "outer_medians_ns_per_operation": [
+            4337576,
+            4536897,
+            4330985,
+            4926483,
+            4369501,
+            4563865,
+            4794920,
+            4597043,
+            4628740,
+            4766059
+          ],
+          "summary": {
+            "mad_ns": 198279,
+            "median_ns": 4580454,
+            "observed_max_ns": 4926483,
+            "upper_budget_ns": 5175291
+          }
+        },
+        {
+          "cardinality_end": 800,
+          "cardinality_start": 600,
+          "outer_medians_ns_per_operation": [
+            4227048,
+            4085723,
+            4393030,
+            4349719,
+            4713728,
+            4823598,
+            4246510,
+            4415416,
+            4594828,
+            4173308
+          ],
+          "summary": {
+            "mad_ns": 171196,
+            "median_ns": 4371374,
+            "observed_max_ns": 4823598,
+            "upper_budget_ns": 4884962
+          }
+        },
+        {
+          "cardinality_end": 1000,
+          "cardinality_start": 800,
+          "outer_medians_ns_per_operation": [
+            4870584,
+            4499358,
+            4077030,
+            4505545,
+            4621619,
+            4169741,
+            4590757,
+            4568061,
+            5085331,
+            5191248
+          ],
+          "summary": {
+            "mad_ns": 185613,
+            "median_ns": 4579409,
+            "observed_max_ns": 5191248,
+            "upper_budget_ns": 5191248
+          }
+        }
+      ],
+      "limit": 2.0,
+      "max_to_min_ratio": 1.0525587607008688,
+      "pass": true
+    },
+    "scheduler_rotation_ns_per_operation": {
+      "limit": 3.0,
+      "max_to_min_ratio": 2.027972027972028,
+      "pass": true,
+      "values": {
+        "100": 143,
+        "1000": 209,
+        "10000": 290
+      }
+    }
+  },
+  "schema_version": 1,
+  "semantic_change_classifications": {
+    "capability_registration": "C02 registered caller-asserted ConformancePassed/Ready values; the correction only permits public Declared/Unknown registration and records verified runtime evidence through a trusted path.",
+    "capability_resolution_one_candidate": "C02 resolved a caller-asserted ConformancePassed/Ready candidate; the corrected public fixture is Declared/Unknown because callers can no longer assert provenance.",
+    "cold_native_boot": "The candidate includes schema-v4 shared-ledger and command-outcome integrity, trusted capability evidence, and expanded optional-service diagnostics absent from C02.",
+    "command_dispatch_local_mutation": "The candidate verifies and durably consumes a host-signed scoped decision, then commits state, outbox, and command receipt atomically; C02 did not perform these checks.",
+    "ephemeral_event_fanout": "The candidate validates every event payload with the bounded secret filter before fanout; C02 did not perform this validation.",
+    "proof_minimal_selection": "C02 selected caller-asserted unsigned Passed nodes; the candidate verifies a backend-authenticated receipt bound to the exact proof and change set.",
+    "proof_obligation_compile": "C02 compiled a caller-constructed assessment; the candidate derives changed paths from Git and conservatively derives obligations.",
+    "resource_lease_and_delegation": "The candidate adds bounded monotonic TTL and expiry reclamation to lease creation and delegation. The measured operation does not wait for expiry or exercise reclamation, so its result is a candidate lease/delegation baseline and is not comparable to the earlier implementation.",
+    "state_backup_restore": "The candidate restore path validates bounded secret-safe payloads and schema-v4 shared-ledger and outcome-resolution state; C02 restored the earlier state format and invariants.",
+    "state_backup_snapshot": "The candidate snapshot includes schema-v4 owner, shared-ledger, authorization, and outcome-resolution tables plus their integrity state; C02 used the earlier schema and data shape.",
+    "warm_native_boot": "The candidate includes schema-v4 shared-ledger and command-outcome integrity, owner heartbeat/recovery, trusted capability evidence, and expanded optional-service diagnostics absent from C02."
+  },
+  "threshold_method": "candidate median must be at most the paired baseline median plus the predeclared 20% relative allowance; baseline outliers and run-specific MAD do not extend the limit. Non-comparable and candidate-only workloads are gated against a separate frozen ten-run candidate reference.",
+  "verdict": "PASS",
+  "work_order": "FGE-004-M00"
+}

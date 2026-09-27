@@ -1,0 +1,14 @@
+test_boolean_schema_version_is_rejected (__main__.CandidateBudgetReferenceTests.test_boolean_schema_version_is_rejected) ... ok
+test_changed_run_count_environment_or_reference_kind_is_rejected (__main__.CandidateBudgetReferenceTests.test_changed_run_count_environment_or_reference_kind_is_rejected) ... ok
+test_claimed_median_must_match_repeated_measurements (__main__.CandidateBudgetReferenceTests.test_claimed_median_must_match_repeated_measurements) ... ok
+test_exact_candidate_baseline_and_environment_binding_passes (__main__.CandidateBudgetReferenceTests.test_exact_candidate_baseline_and_environment_binding_passes) ... ok
+test_invalid_or_truncated_outer_medians_are_rejected (__main__.CandidateBudgetReferenceTests.test_invalid_or_truncated_outer_medians_are_rejected) ... ok
+test_measured_workload_reference_passes (__main__.CandidateBudgetReferenceTests.test_measured_workload_reference_passes) ... ok
+test_stale_candidate_tree_or_baseline_is_rejected (__main__.CandidateBudgetReferenceTests.test_stale_candidate_tree_or_baseline_is_rejected) ... ok
+test_summary_and_budget_must_match_repeated_measurements (__main__.CandidateBudgetReferenceTests.test_summary_and_budget_must_match_repeated_measurements) ... ok
+test_workload_definition_and_sample_shape_are_bound (__main__.CandidateBudgetReferenceTests.test_workload_definition_and_sample_shape_are_bound) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.001s
+
+OK

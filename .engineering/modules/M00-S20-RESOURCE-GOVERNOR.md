@@ -1,6 +1,6 @@
 # M00-S20 — Resource Governor
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S19
 
@@ -44,6 +44,8 @@ Canonical resource policy/accounting authority coordinating S01 leases, S13 sche
 
 ### Resource Lease Protocol (RLP)
 Versioned lease describing resource vector, owner, scope, expiry, priority class, revocation policy and evidence identity. A lease grants bounded consumption, not unrestricted access.
+
+The native M00 governor uses a bounded 60-second monotonic lifetime for each root reservation. Delegated leases inherit that root lifetime and cannot extend it. Expired handles fail closed; lease admission reclaims expired reservations, and a host may call the bounded expiry reaper during periodic maintenance. The governor caps tracked leases at 100,000 so expiry bookkeeping is bounded.
 
 ### Multi-Dimensional Resource Budget (MDRB)
 Budget vector spanning machine/provider/token/cost dimensions. Child work can receive delegated sub-budgets whose total cannot exceed parent authority.
@@ -123,7 +125,7 @@ CRITICAL -> OSM, preserve Survival Reserve, reject expensive work, cancel safe l
 UNKNOWN -> conservative ceilings; no adaptive expansion.
 
 ## Accounting
-Every meaningful consumption record links to project/work-order/execution/capability/provider. S18 TCAL consumes token/cost data. Accounting can be sampled for very cheap resources, but budget enforcement counters remain authoritative where required.
+Every meaningful consumption record links to project/work-order/execution/capability/provider. S18 TCAL consumes token/cost data. Accounting can be sampled for very cheap resources, but budget enforcement counters remain authoritative where required. Native boot restores token/cost totals from S08's immutable ledger before it issues new leases; each durable record has a stable 64-hex usage identity, and replaying the same identity/content is a no-op while the governor is healthy; changed content is rejected. For live accounting, a per-lease gate serializes lease validation, durable insertion and the in-memory charge against cloned-lease admission and delegation. Revocation may race with the durable write; if the durable/live transition is interrupted, ambiguous, or cannot be reconciled in process, the governor becomes dirty and denies new leases and further lease activity, including accounting replays, until a fresh native boot rebuilds its counters from the durable ledger. Provider token/cost budgets default to zero until a caller explicitly configures them.
 
 ## Standalone/platform portability
 FRG works locally with conservative software budgets even where OS hard limits are unavailable. Windows/Linux adapters expose actual enforceable features. Missing cgroups/job-object/GPU controls are capabilities, not hidden assumptions.
@@ -147,6 +149,7 @@ Resource leases do not imply data/permission authority. Quotas are scoped to pri
 - multi-project noisy-neighbor;
 - Windows/Linux enforcement capability matrix;
 - accounting/REP accuracy;
+- deterministic cancellation, persistence-failure, replay-conflict and revocation schedules across the durable/live accounting boundary;
 - sustained pressure/soak benchmarks.
 
 ## Metrics
@@ -174,3 +177,10 @@ Forbidden:
 
 ## Acceptance criteria
 S20 is accepted when Forge can reserve, delegate, account, borrow, revoke and protect multi-dimensional resources with explicit enforcement capability, survival headroom and hierarchical token/cost budgets, while coordinating with S13 without conflating scheduling with resource ownership.
+
+## C03 shared ledger ceiling
+
+The v3 durable ledger keeps per-pool token, cost, and record-count aggregates in S08. Each insert
+reserves against both the pool and one shared 100,000-record ceiling inside `BEGIN IMMEDIATE`, so
+independent stores/processes cannot each admit a separate local allowance. Integrity checks
+reconcile aggregates against ledger contents; duplicate identical usage IDs remain no-ops.

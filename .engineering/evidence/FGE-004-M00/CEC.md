@@ -1,0 +1,209 @@
+# FGE-004-M00 Certification Evidence Capsule — candidate
+
+Status: NOT CERTIFIED — implementation candidate `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` has exact-head CI and a passing ten-pair performance rerun; the initial failing performance run is preserved. Four fresh package-bound reviews and applicable final audit approval remain open. This capsule does not certify its own documentation revision.
+
+## Identity and execution
+
+- Work Order: `FGE-004-M00`, M00 S01-S22, HIGH risk.
+- Admitted base: `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
+- Implementation branch: `fge-004-m00-implementation`; original implementation starting head: `90efa8846b0aaa6615114b4ad363c84b7da46a20`.
+- CD3 implementation candidate: `4d6109024d652fd0ac7454e14eeb5aaa9f5113ac`. Exact-head GitHub Actions run `35890844050` passed all four configured jobs on this SHA, including outbound-network-blocked doctor checks on Ubuntu and Windows. This proves technical CI for this candidate only; a later evidence-only commit must use its own PR #9 exact-head check binding.
+- Pre-CD3 UADS plan/run: `wo_b161d2f667649b5c` / `er_586620b1f8dd4753`, linked to Codex thread `01a0cafa-b9b8-77b2-b017-f3187d711916`. Its recorded digest `1e7bb0a5d6c779590680c790cf8801c59c5827e7f1af1cf224bd5f9ad6f77889` predates CD3 and is not certification evidence for CD3 or CD4. After the CD3 commit, `uads verify --json` returned `no implementation change to verify` on the clean worktree and the run was marked `blocked`; fresh digest-bound CD3/CD4 execution evidence is not established.
+- Installed UADS package: v0.12.1. The prepared Codex bundle uses schema v0.11.0 and adapter contract v0.10.0. `implement` exposes 11 non-review assignments through sequential role-cycling; the current `review` bundle exposes zero assignments and fails closed with `INDEPENDENT_REVIEW_BACKEND_REQUIRED`. Hidden background/subagent/parallel capability remains `unknown`; four distinct assurance reviewers remain required, so visible chat activity cannot count as independent review.
+- The two historical failures remain in UADS history: `fail_0a0885d3ae84936c` and `fail_d24e593c9f468786`. The new plan/run preserves their provenance.
+- PR #9 records the implementation-candidate SHA and exact-head check; the current PR check rollup is authoritative for any later evidence-only revision. This capsule and the Evidence Bundle do not certify their own containing commit.
+
+## C03 correction evidence (historical fda8969 snapshot; superseded by the current overlay at the end)
+
+- Corrected implementation candidate: `fda8969097320cdad9b8f92dffb4fddd8fc2424e`; tree: `f6c4c21a7f5e910c85c6bf5844ddb3b294679e13`. Exact-head Actions run [36270900434](https://github.com/KayzenRoot/forge/actions/runs/36270900434) passed all four configured jobs: governance, Ubuntu native runtime, Windows native runtime, and security/supply-chain. The Linux and Windows hosted outbound-network-blocked doctor steps both passed. This CI run applies to `fda8969097320cdad9b8f92dffb4fddd8fc2424e` only; a later evidence-only revision requires its own exact-head binding.
+- Source-fingerprint verification on `fda8969097320cdad9b8f92dffb4fddd8fc2424e`: PASS, SHA-1 repository object format, 68 inventory entries, zero mismatches.
+- Performance check: PASS, ten paired outer runs × five inner samples; all 16 comparable checks passed. Change Cone, scheduler, and durable-ledger scaling ratios were 2.296×/3×, 2.108×/3×, and 1.079×/2×. The separate initial five-pair failure on two short workloads is preserved and explained in the performance report; the ten-pair result is the primary repeated comparison.
+- H1-H5 and ML1-ML7 corrections and their mapped regression evidence are tracked in [C03 correction matrix](C03-CORRECTION-MATRIX.md). The prior five High and seven consolidated Medium/Low findings are addressed in the correction candidate; this is not an independent approval.
+- Four fresh, distinct native Codex reviewer sessions must assess one frozen evidence-package digest. Their decisions are maintained as separate review evidence bound to that digest; this capsule cannot self-certify.
+
+## S01-S22 candidate coverage (historical candidate snapshot; superseded where the current overlay differs)
+
+| Section | Candidate authority | Current local evidence | Status / remaining proof |
+|---|---|---|---|
+| S01 Kernel Runtime | `forge-kernel::boot`, `runtime` | native boot, runtime bounds, cancellation and Windows CLI smoke | Candidate; C03 exact-head Linux/Windows hosted jobs passed in run `36270900434`; full rollback rehearsal remains |
+| S02 Module Lifecycle | `lifecycle` | transition and readiness tests | Candidate; full rollback rehearsal remains |
+| S03 Contract Fabric | `forge-contracts::contract` | positive/negative schema tests and CLI validator | Candidate; broader corpus remains |
+| S04 Capability Registry | `capabilities` | immutable snapshots, evidence monotonicity, quarantine tests | Candidate; provenance audit remains |
+| S05 Resolver / Decision Plane | `resolver` | privacy, locality, freshness and abstention tests | Candidate; multi-provider scaling remains |
+| S06 Causality Graph | `causality` | cycle/change-cone tests and 100-node benchmark | Candidate; C03 Change Cone scaling measured at 100/1,000/10,000 nodes and passed the 3× per-node ratio gate |
+| S07 Configuration | `config` | precedence, schema, secret-reference and approval tests; invalid environment override preserves prior config | Candidate; broader filesystem/environment fault suite remains |
+| S08 State / Recovery | `forge-state` | v1→v3 migration, durable usage ledger, atomic shared-pool ceiling, concurrent replay, process-kill rollback, outbox reopen/ack and verified backup/restore; CD3 adds fail-closed live/durable accounting recovery tests | Candidate; independent migration/recovery review remains |
+| S09 Event Bus | `events` | bounded ephemeral lane, durable outbox, replay and reopened acknowledgement tests | Candidate; exhaustive crash-at-ack schedules remain |
+| S10 Command Bus | `commands` | authorization, idempotency, state guard, event and unknown-outcome tests | Candidate; external-effect reconciliation remains out of scope |
+| S11 Error Taxonomy | `forge-contracts::error` | stable error fingerprint tests | Candidate; failure-neighborhood integration remains |
+| S12 Idempotency / Cancellation | `commands`, `runtime`, `forge-state` | retryability, unknown outcome, cancellation/deadline tests; CD3 proves cancellation after durable resource usage insertion requires restart reconciliation | Candidate; expanded model schedule corpus remains |
+| S13 Concurrency / Backpressure | `scheduler`, event lanes, resource governor | queue bounds, 128-thread resource reservation, two-boot durable budget race | Candidate; saturation curves and platform stress remain |
+| S14 Cache / Fingerprints | `cache`, `fingerprint`, state cache | exact semantic identity and observed lookup/hit/miss counters | Candidate; token/cost savings are not measured |
+| S15 Plugin / Adapter SDK | `extensions` | scopes, permission intersection, revocation and dormant-state tests | Candidate; no OS sandbox or dynamic execution; adapters remain dormant |
+| S16 Compatibility Engine | `compatibility` | directional 14-dimension evidence matrix tests | Candidate; fixture/version corpus expansion remains |
+| S17 Health / Readiness | `health` | required/optional freshness tests; optional HIVE outage leaves core ready while state is degraded | Candidate; configured external-provider outage integration remains |
+| S18 Telemetry / HPR | `telemetry` | bounded cardinality and local snapshot survives optional exporter failure | Candidate; remote exporter and overhead distribution remain |
+| S19 Deterministic Envelope | `determinism` | fingerprint/replay boundary tests | Candidate; full clock/RNG/filesystem replay normalization remains |
+| S20 Resource Governor | `resources`, `boot`, `forge-state` | live token/cost attribution, cumulative parent limits, restart recovery, exact replay deduplication and atomic durable pool ceiling; CD3 serializes cloned-lease mutation across the durable/live transition and fails closed on ambiguity | Candidate; provider billing integration is unavailable and defaults remain fail-closed at zero budgets |
+| S21 Zero-Dependency Boot | `boot`, `forge-cli doctor` | Windows CLI reports native_ready, schema v3, HIVE not_configured, embeddings disabled | Candidate; local firewall rule creation was denied; exact-candidate hosted egress-block checks passed on Ubuntu and Windows in run `35890844050` |
+| S22 Test-Proof Foundation | `proof` | exact-head proof graph, obligation compiler, high-risk expansion and gap detection tests | Candidate; C03 exact-head hosted CI passed in run `36270900434`; independent review and other M00 proof gaps remain |
+
+## Invariant evidence map
+
+Legend: `LOCAL` means named executable local evidence exists; `PARTIAL` means evidence exists but a required scenario or gate remains. This table is not a PASS certificate.
+
+| Invariant | Status | Evidence / gap |
+|---|---|---|
+| I01 Native boot has no network/model dependency | PARTIAL | native boot and CLI report HIVE unconfigured and embeddings disabled; local firewall control was denied, while hosted blocked-network checks passed on Ubuntu and Windows in C03 run `36270900434` |
+| I02 Cache deletion cannot break correctness | LOCAL | canonical state is separate from disposable cache |
+| I03 Optional integration failure cannot globally fail Forge | PARTIAL | optional HIVE health degradation and no-HIVE boot are covered; configured adapter outage integration remains |
+| I04 Hard contract/security/integrity constraints are not traded | LOCAL | schema, privacy, state integrity and resolver negative tests |
+| I05 Production queues are bounded | PARTIAL | scheduler/event bounds and concurrent resource ceilings pass; full saturation curves remain |
+| I06 Child resource/token/cost authority cannot exceed parent | LOCAL | nested lease/property checks plus SQLite-atomic durable pool ceiling across two boots |
+| I07 Unknown/stale evidence is not healthy/compatible/proven | LOCAL | health, resolver, compatibility and proof negative tests |
+| I08 Commands are intent; events are facts | LOCAL | distinct command/event APIs and post-handler event tests |
+| I09 Unknown external effect is not blindly retried | LOCAL | unknown-outcome command terminal-state test |
+| I10 Replay does not repeat irreversible effects | PARTIAL | idempotency/outbox tests; external reconciliation simulator absent |
+| I11 Extension registration does not grant permission | LOCAL | permission-intersection and dormant-adapter tests |
+| I12 Telemetry is not canonical state | LOCAL | separate telemetry registry and state ownership |
+| I13 Health/readiness is scoped | LOCAL | required/optional readiness report tests |
+| I14 SemVer alone is not compatibility proof | LOCAL | compatibility matrix rejects metadata-only compatibility |
+| I15 Proof evidence is obligation-scoped | LOCAL | S22 compiler and proof-to-obligation binding tests |
+| I16 Reuse binds dependency/environment fingerprints | LOCAL | cache identity and exact-head proof dependency checks |
+| I17 High assurance escalates proof/authority | PARTIAL | high-risk obligations compile; independent assurance backend is not proven |
+| I18 Security controls are not weakened for determinism | PARTIAL | strict/semantic fingerprint split exists; comprehensive review remains |
+| I19 Survival Reserve cannot be borrowed by ordinary work | LOCAL | separate pools and boundary tests |
+| I20 LLM output is not sole hard-invariant authority | LOCAL | deterministic code/tests decide local gates; native runtime calls no model |
+| I21 External trace/context IDs do not authorize | LOCAL | trusted host permission context supplies authorization |
+| I22 Exact-head certification precedes completion | PARTIAL | compiler binds exact head; C03 candidate run `36270900434` passed; final evidence-head checks and independent review remain |
+
+## Mandatory remaining gates
+
+1. The pre-CD3 UADS digest and its nine executable PASS records do not certify later candidates. The C03 executable performance comparison is now PASS, but that does not substitute for an independent performance review. Four fresh, distinct native Codex reviewer sessions must review the same frozen package digest; the historic UADS run remains blocked and is not reused as their evidence.
+2. C03 candidate run `36270900434` passed governance, Linux, Windows, security/supply-chain and both hosted blocked-network doctor checks on SHA `fda8969097320cdad9b8f92dffb4fddd8fc2424e`. Any later evidence-only commit must use its own exact-head check binding through PR #9; the candidate run does not certify that later SHA. Earlier run `35890844050` applies only to its CD3 implementation SHA.
+3. Stop as `BLOCKED — INDEPENDENT_REVIEW_BACKEND_REQUIRED` only if four distinct native Codex reviewer sessions cannot be established against the same frozen package digest. UADS role-cycling and the executor session are not independent review.
+4. Keep the PR unmerged, the canonical checkpoint unchanged and M01 out of scope. Do not promote or certify M00 from this executor run.
+
+## Verdict
+
+`CANDIDATE / NOT CERTIFIED`. No approval, merge or checkpoint promotion is claimed.
+
+## C03 current correction overlay — implementation head 0ce565e (2026-09-26)
+
+This is the authoritative C03 status for the implementation candidate. Earlier `fda8969` and S01-S22
+rows above are historical snapshots wherever they differ from this overlay. The implementation head
+has CI and local evidence; the later documentation-only head must bind its own exact-head CI in PR #9
+and the frozen review package. This capsule does not certify that future documentation revision.
+
+- Implementation head/tree: `0ce565eb217ea3dd1d38e31bf16bdecf772c4175` /
+  `27e4edd886a8cadf802db1359bef45fe265c920c`; admitted base remains
+  `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
+- Exact-head [Actions run 36278984106](https://github.com/KayzenRoot/forge/actions/runs/36278984106)
+  passed all four configured jobs: governance, security/supply-chain, Ubuntu native runtime, and
+  Windows native runtime. Both hosted outbound-egress-blocked doctor checks passed. The local Windows
+  firewall setup was denied and is not represented as egress proof.
+- The raw-Git-blob source verifier passed at this head with 72 manifest entries, SHA-1 Git object
+  format, zero errors and zero mismatches. The added inventory binds build/verification inputs,
+  including `crates/forge-kernel/build.rs`; the unlisted-build-input fixture rejects an omitted path.
+- Schema v4 appends host-signed unknown-outcome resolutions and retains them through backup/restore.
+  Only an authenticated `EffectNotCommitted` decision can enable retry, and the retry requires fresh
+  command authorization. Resource leases use a bounded monotonic TTL, children inherit their parent's
+  expiry, expired reservations are reclaimed, and stale handles fail closed.
+- Secret canaries cover AWS secret-key fields and credential-shaped error codes. Durable published
+  event identifiers equal the staged outbox identifiers; `publish_committed` is no longer public.
+- Local Windows validation on this code head passed: Rust format/check/test/clippy, dependency audit
+  and policy checks, source-fingerprint fixtures, release CLI/doctor, and all six S21 ZDRP readiness
+  groups. The Rust suite reported 1 CLI, 6 contract, 84 kernel and 22 state tests, plus one doctest.
+  Doctor reported `native_ready`, SQLite integrity `ok`, schema v4, HIVE `not_configured`, and semantic
+  embeddings disabled. Local egress was not asserted.
+- The current performance rerun passed the runner's ten-pair comparison: 16/16 comparable workloads
+  and all three scaling checks. The first ten-pair run on the same code head failed only
+  `resource_lease_and_delegation`; both immutable reports and their interpretation are recorded in
+  [the performance evidence](../../../docs/PERFORMANCE-M00-CANDIDATE.md). In the passing rerun, that
+  workload's median was 664 ns/op against a 667 ns/op baseline budget, while its C02 baseline median
+  was 445 ns/op. This is a measured cost associated with the added expiry/reclamation path and a
+  narrow pass under the runner's observed-max threshold; it is not evidence of equal latency or an
+  approved external SLO.
+
+Fresh, distinct security, performance, reliability, and certification-systems reviewers still need
+to inspect one identical frozen package digest. Their actual identities and verdicts are recorded
+outside the package to avoid changing the digest recursively. The PR remains open and draft. The
+canonical checkpoint is unchanged, M00 is not promoted, and M01 has not started.
+
+## C03 final executor correction overlay — implementation head f03da4a (2026-09-26)
+
+This overlay supersedes the earlier implementation and performance status above. It records executor
+evidence only; it is not independent approval, M00 certification, merge authorization, or checkpoint
+promotion.
+
+- Corrected implementation commit: `f03da4aa02e619b5affcff09baf6fd56337a286e`, descended from the
+  previously admitted implementation `0ce565eb217ea3dd1d38e31bf16bdecf772c4175`. The evidence-only
+  commit, exact-head CI run, source verification and PR snapshot are bound by the final external
+  context lock and frozen package.
+- Confirmed external effects now remain in a terminal pending-finalization state after local CAS
+  conflicts. A host-signed, short-lived, exact-scope revision can change only the local transition;
+  staged result, CAS, durable outbox, receipt and final marker complete atomically. Process-crash
+  regressions cover each write boundary. Store schema is v7.
+- Durable outbox ordering is per producer and acknowledgements are per consumer. Poison events are
+  isolated and quarantined after three decode failures. SQLite event sequence allocation and staged
+  finalization reserve the writer before read/modify/write; 96 concurrent outbox inserts receive
+  unique per-producer sequences.
+- Backups cover CAS objects and the database. Restore verifies the database, manifest and CAS
+  contents against a separately supplied expected fingerprint; an adjacent unkeyed hash alone is
+  not described as authentication. Credential-shaped names/values are rejected at persistence
+  boundaries, with canary regression coverage.
+- Local verification on the corrected code: `cargo fmt --all -- --check`, workspace check, clippy,
+  full tests, `cargo deny check`, `cargo audit --deny warnings`, release build, release doctor and
+  six named S21 readiness scenarios passed. The Rust result was 1 CLI, 6 contract, 85 kernel, 26 state
+  and one compile-fail doctest. Doctor reported `native_ready`, schema 7, SQLite integrity `ok`, and
+  offline-ready. Local S21 did not assert blocked egress; only hosted Linux/Windows firewall checks
+  can prove that gate.
+- `cargo deny check` emitted duplicate-version warnings for `cpufeatures`, `hashbrown`, and `syn`;
+  advisories, bans, licenses and sources passed. `cargo audit --deny warnings` exited successfully.
+- Performance comparison on implementation head `f03da4a` passed 13/13 comparable workloads with
+  the predeclared fixed 20% allowance and 3/3 scaling checks. Two workload names were
+  `not_comparable`; the 17 changed/candidate-only workloads remain candidate baselines. The exact
+  report and benchmark-source snapshots are in the frozen evidence package; the historical
+  `fda8969` observed-maximum budget is superseded and is not counted under the current method.
+- Measurement attempts on intermediate commits exposed trailing-comma extraction and SQLite writer
+  contention; both were corrected before the complete `f03da4a` run. The interrupted attempts are
+  preserved as execution history, not counted as benchmark verdicts.
+
+The final evidence-head hosted CI result and fresh four-session review results must be read from the
+external frozen-package lock. Reviewers must all receive the same package SHA-256. Until their
+verdicts are bound, the result remains `CANDIDATE / NOT CERTIFIED`. PR #9 remains open and draft;
+canonical checkpoint files remain unchanged; M00 is not promoted and M01 has not started.
+
+## C03 reviewer correction execution overlay — implementation commit e1da083 (2026-09-27)
+
+This overlay supersedes earlier implementation and performance status where they differ. It records
+executor evidence only. It is not independent approval, M00 certification, merge authorization, or
+checkpoint promotion.
+
+- Corrected code commit/tree: `e1da083893d9335118519392c1cdb36021cbfc74` /
+  `c5a9d5950af40e43f978d47b89186803121f3615`, based on admitted base
+  `5b6c41da4a7a871d0538f17b164fb5e4ebd9b80c`.
+- R1 pure-command SQLite contention: writer reservation precedes outbox reads; only transient BUSY/
+  LOCKED commit contention for pure commands is retryable and has a stable code. Regressions cover
+  96 concurrent eventful store commits, 48 concurrent pure eventful commands, extended-code
+  classification, and retryable mapping. The external-effect unknown-outcome boundary is unchanged.
+- P1/P2 performance correction: ten paired outer runs x five inner samples; 13/13 comparable workloads,
+  19/19 candidate/non-comparable reference gates, and 3/3 scaling checks PASS. Idle working set passed
+  its paired fixed budget (7,667,712 B baseline median; 8,198,144 B candidate median; 9,201,255 B
+  budget). Candidate references are bound to exact source, environment, workload and sample shape.
+  These are local candidate measurements, not external SLOs.
+- Exact source verifier on implementation commit: PASS, SHA-1, 73 paths, zero errors/mismatches,
+  tree `c5a9d5950af40e43f978d47b89186803121f3615`. The inventory path-sequence SHA-256 remains
+  `885942e9e940bb60ad13e7146f43155c6ac5be5c3d16dc708d3ec82801b88718`.
+- Local exact-code validation passed: format; workspace check; Clippy; 1 CLI, 6 contract, 87 kernel,
+  and 28 state tests plus one compile-fail doctest; cargo-deny policy categories; cargo-audit; release
+  build; nine performance-reference tests; fingerprint verifier and fixture suite. Release doctor
+  reported native_ready, offline_ready, schema 7, and SQLite integrity ok. All six local S21 groups
+  passed; local egress was skipped and is not represented as blocked-network proof.
+- The prior exact-head CI run 36289138683 and round-1 review apply only to old commit 5e4fd5d and its
+  immutable package. The evidence/documentation commit following this overlay needs its own exact-head
+  PR #9 CI result. Four fresh native independent reviewers must then examine one identical frozen
+  package digest. Their current verdicts and actual session identities remain pending.
+
+The canonical checkpoint is unchanged. PR #9 remains open and draft; this execution does not certify
+M00, merge the PR, promote a checkpoint, or start M01.

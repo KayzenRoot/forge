@@ -1,6 +1,6 @@
 # M00-S18 — Telemetry & Hot Path Registry
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S17
 
@@ -104,6 +104,8 @@ No optimization is accepted solely because code "looks faster."
 
 ## OpenTelemetry
 OpenTelemetry is the preferred interoperability candidate for traces/metrics/logs/exporters. Forge semantic contracts remain internal source truth so changing exporter/backend does not rewrite kernel semantics.
+
+The M00 local registry exposes an optional exporter boundary over a snapshot. Export failure is explicit and leaves locally collected metrics intact; no remote exporter is configured by native boot.
 
 ## Structured logging
 Logs use stable event/error/action codes and structured fields. Human text is supplementary. Raw source code, prompts, secrets and payloads are not logged by default.

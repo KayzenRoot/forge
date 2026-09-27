@@ -1,6 +1,6 @@
 # M00-S09 — Event Bus
 
-Status: PLANNED / NOT IMPLEMENTED
+Status: CANDIDATE IMPLEMENTATION PRESENT / NOT CERTIFIED
 Module: M00 Forge Kernel & Contract Runtime
 Depends on: S01-S08
 
@@ -173,3 +173,18 @@ Forbidden by default:
 
 ## Acceptance criteria
 S09 is accepted when Forge has a typed local-first event fabric with explicit event semantics, bounded lanes, selective durability, safe recovery/replay, causality, isolation and backpressure, while keeping commands and canonical state ownership distinct.
+
+## C03 outbox transaction rule
+
+When a command changes canonical state and emits durable events, S08 commits the compare-and-set,
+outbox rows, and idempotency receipt together. In-process publication happens after that transaction
+commits. A crash before commit leaves none of those records; a crash after commit leaves durable
+pending outbox rows for idempotent redelivery. Conflicting event identity aborts the entire command
+transaction instead of leaving state or a receipt partially committed.
+
+The durable outbox assigns a per-producer sequence and replay follows that sequence rather than
+wall-clock timestamps or lexicographic event IDs. Delivery state is scoped to each consumer ID: one
+consumer acknowledgement cannot retire another consumer's event. Malformed or contract-invalid
+events increment a bounded per-consumer attempt record and are quarantined after three failures;
+valid events in the same replay batch continue. Regressions cover producer order, independent
+acknowledgements, and poison-event isolation.

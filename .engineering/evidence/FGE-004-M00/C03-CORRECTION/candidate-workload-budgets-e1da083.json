@@ -1,0 +1,515 @@
+{
+  "baseline_sha": "2f95efd4a05ade63dd3e44f3a202c0afe0a46bc4",
+  "candidate_sha": "e1da083893d9335118519392c1cdb36021cbfc74",
+  "candidate_tree_sha": "c5a9d5950af40e43f978d47b89186803121f3615",
+  "environment": {
+    "architecture": "AMD64",
+    "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 23 Model 96 Stepping 1, AuthenticAMD",
+    "rustc_vv": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.1\nLLVM version: 22.1.8"
+  },
+  "inner_samples_per_workload": 5,
+  "outer_runs": 10,
+  "reference_kind": "repeated_candidate_baseline_not_external_slo",
+  "relative_allowance_percent": 20,
+  "schema_version": 1,
+  "threshold_method": "Each frozen candidate-reference median receives the same predeclared fixed 20% allowance as common baseline comparisons; outer-run variance never widens the budget.",
+  "work_order": "FGE-004-M00",
+  "workloads": {
+    "capability_registration": {
+      "definition_sha256": "a3d0aa3dc68220d913f89106f49f3bb94e5c71169ace15acabfd616d3051095e",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 400,
+      "measurement_summary": {
+        "mad_ns": 53,
+        "median_ns": 2322,
+        "observed_max_ns": 2429,
+        "upper_budget_ns": 2481
+      },
+      "outer_medians_ns": [
+        2261,
+        2331,
+        2429,
+        2273,
+        2372,
+        2340,
+        2313,
+        2265,
+        2257,
+        2419
+      ],
+      "reference_median_ns": 2322,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 2787
+    },
+    "capability_resolution_one_candidate": {
+      "definition_sha256": "5266096f8aca67e6acf9b50f61c1a40db747e9eec7d554b6cced6642b0f187df",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 20000,
+      "measurement_summary": {
+        "mad_ns": 22,
+        "median_ns": 1712,
+        "observed_max_ns": 1885,
+        "upper_budget_ns": 1885
+      },
+      "outer_medians_ns": [
+        1714,
+        1688,
+        1829,
+        1885,
+        1684,
+        1733,
+        1692,
+        1727,
+        1681,
+        1710
+      ],
+      "reference_median_ns": 1712,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 2055
+    },
+    "change_cone_10000_node_chain": {
+      "definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 20,
+      "measurement_summary": {
+        "mad_ns": 150070,
+        "median_ns": 10612465,
+        "observed_max_ns": 11479860,
+        "upper_budget_ns": 11479860
+      },
+      "outer_medians_ns": [
+        10777285,
+        10510955,
+        10595500,
+        11445665,
+        10477145,
+        11200440,
+        11479860,
+        10629430,
+        10577360,
+        10446615
+      ],
+      "reference_median_ns": 10612465,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 12734958
+    },
+    "change_cone_1000_node_chain": {
+      "definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 100,
+      "measurement_summary": {
+        "mad_ns": 29742,
+        "median_ns": 713053,
+        "observed_max_ns": 868662,
+        "upper_budget_ns": 868662
+      },
+      "outer_medians_ns": [
+        824544,
+        729665,
+        692269,
+        868662,
+        698687,
+        776923,
+        727420,
+        675500,
+        687059,
+        679563
+      ],
+      "reference_median_ns": 713053,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 855664
+    },
+    "change_cone_100_node_chain": {
+      "definition_sha256": "b167a8d7e78749671e5fd7f44b4c9bec6a4c8427b95738cf971b45a55750d86c",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 800,
+      "measurement_summary": {
+        "mad_ns": 648,
+        "median_ns": 48866,
+        "observed_max_ns": 51396,
+        "upper_budget_ns": 51396
+      },
+      "outer_medians_ns": [
+        51396,
+        48604,
+        48888,
+        51179,
+        48626,
+        51341,
+        48430,
+        48006,
+        48844,
+        50539
+      ],
+      "reference_median_ns": 48866,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 58640
+    },
+    "cold_native_boot": {
+      "definition_sha256": "c7fc18f60dfde6495d52f2ba65fc162a70abba6e96aba2e115077593a21e2857",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 20,
+      "measurement_summary": {
+        "mad_ns": 931462,
+        "median_ns": 77554642,
+        "observed_max_ns": 83126965,
+        "upper_budget_ns": 83126965
+      },
+      "outer_medians_ns": [
+        79110850,
+        79299820,
+        77279145,
+        78245030,
+        76382105,
+        77830140,
+        83126965,
+        77231230,
+        74506655,
+        77167235
+      ],
+      "reference_median_ns": 77554642,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 93065571
+    },
+    "command_dispatch_local_mutation": {
+      "definition_sha256": "7004a26cdcbedadd2135ed09910346eb6d6d02a8a05fd1d4dfd3ec2fac2c54ee",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 200,
+      "measurement_summary": {
+        "mad_ns": 167466,
+        "median_ns": 15526585,
+        "observed_max_ns": 15999412,
+        "upper_budget_ns": 16028983
+      },
+      "outer_medians_ns": [
+        15650364,
+        15357508,
+        15360729,
+        15598813,
+        15999412,
+        15222774,
+        15688404,
+        15081991,
+        15454358,
+        15873371
+      ],
+      "reference_median_ns": 15526585,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 18631902
+    },
+    "ephemeral_event_fanout": {
+      "definition_sha256": "3ff0a529255f8071472538d3a320873649a78a45f0b1bd7972710b1779e45974",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 4000,
+      "measurement_summary": {
+        "mad_ns": 29,
+        "median_ns": 1916,
+        "observed_max_ns": 2179,
+        "upper_budget_ns": 2179
+      },
+      "outer_medians_ns": [
+        1923,
+        1910,
+        1888,
+        2086,
+        1881,
+        1947,
+        2179,
+        1889,
+        1896,
+        1960
+      ],
+      "reference_median_ns": 1916,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 2300
+    },
+    "git_exact_change_assessment": {
+      "definition_sha256": "3259e029e38786794d5b22c989ae770f572ba2d2333f3d82ada90a1bbd424be7",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 2,
+      "measurement_summary": {
+        "mad_ns": 21835050,
+        "median_ns": 381867125,
+        "observed_max_ns": 424421800,
+        "upper_budget_ns": 447372275
+      },
+      "outer_medians_ns": [
+        398585150,
+        362589000,
+        358207100,
+        408287200,
+        365149100,
+        424421800,
+        404836250,
+        361166150,
+        361603650,
+        409291650
+      ],
+      "reference_median_ns": 381867125,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 458240550
+    },
+    "proof_minimal_selection": {
+      "definition_sha256": "2d421a20c529a0a00303af9ee09c99be284d74aab3ef4b46999e1c89b5f41d42",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 4000,
+      "measurement_summary": {
+        "mad_ns": 58,
+        "median_ns": 9145,
+        "observed_max_ns": 9242,
+        "upper_budget_ns": 9319
+      },
+      "outer_medians_ns": [
+        9120,
+        8951,
+        9214,
+        9213,
+        9120,
+        9242,
+        9187,
+        9096,
+        9070,
+        9170
+      ],
+      "reference_median_ns": 9145,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 10974
+    },
+    "proof_obligation_compile": {
+      "definition_sha256": "54adfa2dbe849d490c5b5838457b9ec539ee1ab0e351d6926c0530faf712c401",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 4000,
+      "measurement_summary": {
+        "mad_ns": 370,
+        "median_ns": 17737,
+        "observed_max_ns": 18877,
+        "upper_budget_ns": 18877
+      },
+      "outer_medians_ns": [
+        17812,
+        17662,
+        17619,
+        18032,
+        17268,
+        18877,
+        18791,
+        17459,
+        17291,
+        18718
+      ],
+      "reference_median_ns": 17737,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 21285
+    },
+    "resource_lease_and_delegation": {
+      "definition_sha256": "d21fa45f27f72c5ea54ed1dc729aa54d6a40146678ddb3ef1d2f2fb5be705575",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 10000,
+      "measurement_summary": {
+        "mad_ns": 1,
+        "median_ns": 639,
+        "observed_max_ns": 643,
+        "upper_budget_ns": 643
+      },
+      "outer_medians_ns": [
+        639,
+        636,
+        639,
+        640,
+        636,
+        643,
+        640,
+        640,
+        639,
+        639
+      ],
+      "reference_median_ns": 639,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 767
+    },
+    "resource_usage_durable": {
+      "definition_sha256": "79e6f96ca64002a3d01fc085b111cd3c280272c00c83b652ee102f4fa0f47f5e",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 200,
+      "measurement_summary": {
+        "mad_ns": 120437,
+        "median_ns": 4593762,
+        "observed_max_ns": 4795662,
+        "upper_budget_ns": 4955073
+      },
+      "outer_medians_ns": [
+        4680716,
+        4636996,
+        4157200,
+        4550528,
+        4747682,
+        4795662,
+        4509953,
+        4331662,
+        4408748,
+        4672695
+      ],
+      "reference_median_ns": 4593762,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 5512515
+    },
+    "scheduler_owner_rotation_100": {
+      "definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 200,
+      "measurement_summary": {
+        "mad_ns": 10,
+        "median_ns": 148,
+        "observed_max_ns": 195,
+        "upper_budget_ns": 195
+      },
+      "outer_medians_ns": [
+        136,
+        144,
+        142,
+        152,
+        136,
+        195,
+        166,
+        173,
+        143,
+        156
+      ],
+      "reference_median_ns": 148,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 178
+    },
+    "scheduler_owner_rotation_1000": {
+      "definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 2000,
+      "measurement_summary": {
+        "mad_ns": 9,
+        "median_ns": 195,
+        "observed_max_ns": 279,
+        "upper_budget_ns": 279
+      },
+      "outer_medians_ns": [
+        187,
+        196,
+        184,
+        234,
+        182,
+        279,
+        222,
+        187,
+        200,
+        195
+      ],
+      "reference_median_ns": 195,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 234
+    },
+    "scheduler_owner_rotation_10000": {
+      "definition_sha256": "9bd6b1a633ef312bf381746957fc2089c8ab0b3745ae12f2c23a5e89ca386bd8",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 20000,
+      "measurement_summary": {
+        "mad_ns": 15,
+        "median_ns": 292,
+        "observed_max_ns": 314,
+        "upper_budget_ns": 337
+      },
+      "outer_medians_ns": [
+        294,
+        291,
+        274,
+        314,
+        269,
+        297,
+        300,
+        271,
+        309,
+        278
+      ],
+      "reference_median_ns": 292,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 351
+    },
+    "state_backup_restore": {
+      "definition_sha256": "dbac17a3832e66f0b02e0ccafb79c500bb315345670e0c4e1977168a97171b44",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 4,
+      "measurement_summary": {
+        "mad_ns": 1348637,
+        "median_ns": 62145275,
+        "observed_max_ns": 67849875,
+        "upper_budget_ns": 67849875
+      },
+      "outer_medians_ns": [
+        62399525,
+        64768000,
+        61762750,
+        63625800,
+        59918175,
+        64996550,
+        61891025,
+        67849875,
+        61108450,
+        60928525
+      ],
+      "reference_median_ns": 62145275,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 74574330
+    },
+    "state_backup_snapshot": {
+      "definition_sha256": "c762bc01388c59b18a51ec5e9a422c5584875a601f7ba3e641feb19eea6077f4",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 1,
+      "measurement_summary": {
+        "mad_ns": 3502150,
+        "median_ns": 54025000,
+        "observed_max_ns": 61370000,
+        "upper_budget_ns": 64531450
+      },
+      "outer_medians_ns": [
+        58307500,
+        55654100,
+        49389700,
+        55346100,
+        51303200,
+        49528000,
+        51343000,
+        52703900,
+        58653200,
+        61370000
+      ],
+      "reference_median_ns": 54025000,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 64830000
+    },
+    "warm_native_boot": {
+      "definition_sha256": "11c20947103e7a5c7c1212586d04496d798fdff0e597ae18c978b887dec93bb0",
+      "inner_samples_per_outer_run": 5,
+      "iterations_per_sample": 20,
+      "measurement_summary": {
+        "mad_ns": 1940057,
+        "median_ns": 28776600,
+        "observed_max_ns": 32460000,
+        "upper_budget_ns": 34596771
+      },
+      "outer_medians_ns": [
+        29372765,
+        26647765,
+        27296020,
+        32460000,
+        30094235,
+        28180435,
+        30899095,
+        25679915,
+        26080360,
+        30534220
+      ],
+      "reference_median_ns": 28776600,
+      "relative_allowance_percent": 20,
+      "upper_budget_ns": 34531920
+    }
+  }
+}
